@@ -8,6 +8,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.TextView
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedHelpers
@@ -17,8 +18,9 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
  * Hook SystemUI 状态栏，注入电池功率 TextView（Scene 迷你监视器风格）。
  *
  * - 时钟类兼容：ColorOS(oplus) / AOSP 双类名探测
- * - 配置：ConfigBridge（ContentProvider IPC）实时拉取，1s 内生效
- * - 位置：默认插时钟右侧 + 智能避让右侧图标；支持 x/y 偏移微调
+ * - 配置：ConfigBridge（ContentProvider IPC + 磁盘缓存）实时拉取
+ * - 优先级：注入到**状态栏根容器**并抬高 elevation，功率显示在**所有通知图标之上**，
+ *   通知再多也不会覆盖功率；默认位置在时钟左侧（不盖时钟），可 x/y 偏移微调
  */
 object SystemUIHook {
 
@@ -29,6 +31,7 @@ object SystemUIHook {
     )
 
     private const val POWER_TAG = "battery_power_overlay_tag"
+    private const val ELEVATION = 100f
 
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
         val clockClass = CANDIDATES.firstNotNullOfOrNull {
@@ -48,16 +51,31 @@ object SystemUIHook {
 
     private fun inject(clock: View) {
         val parent = clock.parent as? ViewGroup ?: return
-        if (parent.findViewWithTag<View>(POWER_TAG) != null) return
+        // 状态栏根容器（FrameLayout，支持 gravity + elevation 层级）
+        val root = findStatusBarRoot(parent) ?: parent
+        if (root !is FrameLayout) {
+            // 兜底：挂到时钟父容器（旧方案，无覆盖优先级）
+            attachLegacy(clock, parent)
+            return
+        }
+        if (root.findViewWithTag<View>(POWER_TAG) != null) return
 
         val ctx = clock.context
         val tv = TextView(ctx).apply {
             tag = POWER_TAG
             gravity = Gravity.CENTER_VERTICAL
             includeFontPadding = false
+            text = "--"
         }
-        // 先挂到父容器末尾（位置由每帧 applyConfig 计算）
-        parent.addView(tv)
+        val lp = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.END or Gravity.CENTER_VERTICAL
+        )
+        tv.layoutParams = lp
+        tv.elevation = ELEVATION
+        tv.translationZ = ELEVATION
+        root.addView(tv)
 
         // 1s 刷新循环
         val handler = Handler(Looper.getMainLooper())
@@ -65,7 +83,7 @@ object SystemUIHook {
             override fun run() {
                 if (!tv.isAttachedToWindow) return
                 val cfg = ConfigBridge.query(ctx)
-                applyConfig(tv, parent, clock, cfg)
+                applyConfig(tv, clock, root, cfg)
                 tv.text = readPower(ctx, cfg)
                 handler.postDelayed(this, 1000L)
             }
@@ -73,13 +91,35 @@ object SystemUIHook {
         tv.post(runnable)
     }
 
-    /** 位置（智能避让 + x/y 偏移）/ 颜色 / 字号 / 显示开关 实时应用 */
-    private fun applyConfig(
-        tv: TextView,
-        parent: ViewGroup,
-        clock: View,
-        cfg: Map<String, String>
-    ) {
+    /** 兜底方案：插入时钟父容器（无 Z 序提升） */
+    private fun attachLegacy(clock: View, parent: ViewGroup) {
+        if (parent.findViewWithTag<View>(POWER_TAG) != null) return
+        val ctx = clock.context
+        val tv = TextView(ctx).apply {
+            tag = POWER_TAG
+            gravity = Gravity.CENTER_VERTICAL
+            includeFontPadding = false
+            textSize = 11f
+            text = "--"
+        }
+        val idx = parent.indexOfChild(clock)
+        parent.addView(tv, idx + 1)
+        val handler = Handler(Looper.getMainLooper())
+        val runnable = object : Runnable {
+            override fun run() {
+                if (!tv.isAttachedToWindow) return
+                val cfg = ConfigBridge.query(ctx)
+                tv.textSize = ConfigBridge.floatOf(cfg, "hook_text_size", 11f)
+                tv.setTextColor(ConfigBridge.intOf(cfg, "hook_text_color", Color.WHITE))
+                tv.text = readPower(ctx, cfg)
+                handler.postDelayed(this, 1000L)
+            }
+        }
+        tv.post(runnable)
+    }
+
+    /** 位置（margin 控制，默认时钟左侧）+ 颜色/字号/显示开关 实时应用 */
+    private fun applyConfig(tv: TextView, clock: View, root: FrameLayout, cfg: Map<String, String>) {
         val ctx = tv.context
 
         // 显示开关
@@ -91,63 +131,46 @@ object SystemUIHook {
         tv.textSize = ConfigBridge.floatOf(cfg, "hook_text_size", 11f)
         tv.setTextColor(ConfigBridge.intOf(cfg, "hook_text_color", Color.WHITE))
 
-        // 基准位置：时钟右侧（side=0）或左侧（side=1）
-        val side = ConfigBridge.intOf(cfg, "hook_side", 0)
-        val clockIdx = parent.indexOfChild(clock)
-        val targetIdx = if (clockIdx >= 0) clockIdx + if (side == 1) 0 else 1 else -1
-        val currentIdx = parent.indexOfChild(tv)
-        if (targetIdx >= 0 && currentIdx != targetIdx) {
-            runCatching { parent.removeView(tv) }
-            runCatching { parent.addView(tv, targetIdx.coerceAtMost(parent.childCount)) }
-        }
+        // 位置：以时钟为锚点
+        val side = ConfigBridge.intOf(cfg, "hook_side", 0)  // 0=时钟右侧 1=时钟左侧
+        val ox = ConfigBridge.intOf(cfg, "hook_offset_x", 0)
+        val oy = ConfigBridge.intOf(cfg, "hook_offset_y", 0)
 
-        // x/y 偏移（px，translation 不破坏布局流）
-        val ox = ConfigBridge.intOf(cfg, "hook_offset_x", 0).toFloat()
-        val oy = ConfigBridge.intOf(cfg, "hook_offset_y", 0).toFloat()
-        tv.translationX = ox
-        tv.translationY = oy
+        val lp = tv.layoutParams as? FrameLayout.LayoutParams ?: return
+        lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
 
-        // 智能避让：自动往左让出右侧系统图标空间（当偏移为 0 时生效）
-        val avoid = ConfigBridge.boolOf(cfg, "hook_avoid", true)
-        if (avoid && ox == 0f) {
-            val statusRoot = findStatusBarRoot(parent) ?: parent
-            val rightEdge = statusRoot.right - statusRoot.paddingRight
-            val iconsLeft = findRightmostIconLeft(statusRoot, clock, tv)
-            val target = iconsLeft - dp(ctx, 4)
-            if (tv.width > 0 && target < tv.left) {
-                tv.translationX = (target - tv.left).toFloat()
-            }
+        // 用屏幕坐标计算锚点（clock 与 root 坐标系不同，不能直接用 right）
+        val rootLoc = IntArray(2)
+        val clockLoc = IntArray(2)
+        root.getLocationOnScreen(rootLoc)
+        clock.getLocationOnScreen(clockLoc)
+        val rootRightScreen = rootLoc[0] + root.width - root.paddingRight
+        val clockLeftScreen = clockLoc[0]
+        val clockRightScreen = clockLoc[0] + clock.width
+
+        val marginEnd = if (side == 1) {
+            // 时钟左侧：右边缘 = 时钟左边缘 - 间距 - 偏移
+            (rootRightScreen - clockLeftScreen + dp(ctx, 4) - ox).coerceAtLeast(0)
+        } else {
+            // 时钟右侧：贴着时钟右边缘（时钟通常在状态栏最右）
+            (rootRightScreen - clockRightScreen + dp(ctx, 4) - ox).coerceAtLeast(0)
         }
+        lp.marginEnd = marginEnd
+        lp.marginTop = oy
+        lp.topMargin = oy
+        runCatching { tv.layoutParams = lp }
     }
 
-    /** 状态栏根容器（向上找到 DecorView 或最大容器） */
-    private fun findStatusBarRoot(v: ViewGroup): ViewGroup? {
+    /** 状态栏根容器（向上找到最外层 FrameLayout） */
+    private fun findStatusBarRoot(v: ViewGroup): FrameLayout? {
         var cur: ViewGroup? = v
-        var root: ViewGroup? = v
+        var lastFrame: FrameLayout? = null
         var guard = 0
-        while (cur != null && guard++ < 10) {
-            root = cur
+        while (cur != null && guard++ < 12) {
+            if (cur is FrameLayout) lastFrame = cur
             cur = cur.parent as? ViewGroup
         }
-        return root
-    }
-
-    /** 找出当前注入点右侧的第一个图标左边界（避让用） */
-    private fun findRightmostIconLeft(root: ViewGroup, clock: View, tv: TextView): Int {
-        val tvRight = tv.right + tv.translationX.toInt()
-        var minLeft = root.right - root.paddingRight
-        var found = false
-        for (i in 0 until root.childCount) {
-            val child = root.getChildAt(i)
-            if (child === tv || child === clock) continue
-            if (child.visibility != View.VISIBLE) continue
-            if (child.right <= tvRight) continue
-            if (child.left < minLeft) {
-                minLeft = child.left
-                found = true
-            }
-        }
-        return if (found) minLeft else root.right - dp(root.context, 24)
+        return lastFrame
     }
 
     /** SystemUI 进程内用系统权限读 BatteryManager，无需 root */
