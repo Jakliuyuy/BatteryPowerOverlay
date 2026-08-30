@@ -11,3 +11,4 @@ captures/
 !release.jks
 app/release/
 .keystore_env
+apk-out/
