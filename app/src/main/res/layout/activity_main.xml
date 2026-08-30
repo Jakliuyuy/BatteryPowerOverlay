@@ -197,7 +197,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:max="400" />
+                android:max="4000" />
             <TextView
                 android:id="@+id/tv_hook_offset_x"
                 android:layout_width="48dp"
@@ -221,7 +221,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:max="200" />
+                android:max="2000" />
             <TextView
                 android:id="@+id/tv_hook_offset_y"
                 android:layout_width="48dp"

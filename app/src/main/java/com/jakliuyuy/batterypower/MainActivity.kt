@@ -126,25 +126,25 @@ class MainActivity : AppCompatActivity() {
         binding.cbHookAvoid.isChecked = SettingsStore.hookAvoid
         binding.cbHookAvoid.setOnCheckedChangeListener { _, b -> SettingsStore.hookAvoid = b }
 
-        binding.seekHookOffsetX.progress = (SettingsStore.hookOffsetX + 200).coerceIn(0, 400)
+        binding.seekHookOffsetX.progress = (SettingsStore.hookOffsetX + 2000).coerceIn(0, 4000)
         binding.tvHookOffsetX.text = "${SettingsStore.hookOffsetX}px"
         binding.seekHookOffsetX.setOnSeekBarChangeListener(object :
             android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
-                SettingsStore.hookOffsetX = p - 200
-                binding.tvHookOffsetX.text = "${p - 200}px"
+                SettingsStore.hookOffsetX = p - 2000
+                binding.tvHookOffsetX.text = "${p - 2000}px"
             }
             override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
             override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
         })
 
-        binding.seekHookOffsetY.progress = (SettingsStore.hookOffsetY + 100).coerceIn(0, 200)
+        binding.seekHookOffsetY.progress = (SettingsStore.hookOffsetY + 1000).coerceIn(0, 2000)
         binding.tvHookOffsetY.text = "${SettingsStore.hookOffsetY}px"
         binding.seekHookOffsetY.setOnSeekBarChangeListener(object :
             android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: android.widget.SeekBar?, p: Int, fromUser: Boolean) {
-                SettingsStore.hookOffsetY = p - 100
-                binding.tvHookOffsetY.text = "${p - 100}px"
+                SettingsStore.hookOffsetY = p - 1000
+                binding.tvHookOffsetY.text = "${p - 1000}px"
             }
             override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
             override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
