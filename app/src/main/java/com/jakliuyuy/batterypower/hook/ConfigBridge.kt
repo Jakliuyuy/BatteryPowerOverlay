@@ -5,15 +5,20 @@ import android.database.Cursor
 
 /**
  * hook 侧配置桥：SystemUI 进程内通过 ContentProvider 拉取主 app 配置。
- * 查询失败返回空 Map → 调用方使用内置默认值，绝不崩溃。
+ *
+ * 可靠性设计（主 app 进程被杀 / SystemUI 重启都不丢配置）：
+ * 1. 实时通道：ContentProvider query（app 存活时每 1s 拉取）
+ * 2. 持久化缓存：写入 SystemUI 自己的 SharedPreferences（文件在 /data/user_de/0/com.android.systemui/ 下，
+ *    SystemUI 重启后依然可读），query 失败时兜底
+ * 3. 内存缓存：本次进程内免读盘
  */
 object ConfigBridge {
 
-    /** 最近一次成功拉取的配置缓存：主 app 进程被杀时兜底，避免回落默认值 */
-    @Volatile
-    private var cached: Map<String, String>? = null
+    private const val CACHE_SP = "battery_power_hook_cache"
 
-    /** 下次允许重试 provider 的时间戳（失败节流，避免每秒狂拉起 provider） */
+    @Volatile
+    private var memoryCache: Map<String, String>? = null
+
     @Volatile
     private var nextRetryAt = 0L
 
@@ -22,20 +27,17 @@ object ConfigBridge {
         if (now >= nextRetryAt) {
             val fresh = tryQuery(ctx)
             if (fresh.isNotEmpty()) {
-                cached = fresh
+                memoryCache = fresh
+                saveToDisk(ctx, fresh)
                 nextRetryAt = 0
                 return fresh
             }
-            // 主 app 被杀或 provider 未就绪：10 秒后再试，期间用缓存
+            // provider 不可用（主 app 被杀）：10 秒节流重试
             nextRetryAt = now + 10_000
         }
-        return cached ?: emptyMap()
-    }
-
-    /** 清除缓存（仅测试用） */
-    fun invalidate() {
-        cached = null
-        nextRetryAt = 0
+        // 兜底顺序：内存缓存 → 磁盘缓存（SystemUI 重启后仍有）→ 默认值
+        memoryCache?.let { return it }
+        return loadFromDisk(ctx) ?: emptyMap()
     }
 
     private fun tryQuery(ctx: Context): Map<String, String> {
@@ -57,6 +59,31 @@ object ConfigBridge {
             }
         } catch (e: Exception) {
             emptyMap()
+        }
+    }
+
+    /** 写入 SystemUI 进程自己的 SharedPreferences（跨重启持久化） */
+    private fun saveToDisk(ctx: Context, cfg: Map<String, String>) {
+        try {
+            val sp = ctx.getSharedPreferences(CACHE_SP, Context.MODE_PRIVATE)
+            sp.edit().apply {
+                for ((k, v) in cfg) putString(k, v)
+                apply()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun loadFromDisk(ctx: Context): Map<String, String>? {
+        return try {
+            val sp = ctx.getSharedPreferences(CACHE_SP, Context.MODE_PRIVATE)
+            val map = HashMap<String, String>()
+            for (k in com.jakliuyuy.batterypower.config.ConfigProvider.ALL_KEYS) {
+                sp.getString(k, null)?.let { map[k] = it }
+            }
+            if (map.isEmpty()) null else map
+        } catch (e: Exception) {
+            null
         }
     }
 
