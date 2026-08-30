@@ -156,7 +156,6 @@ object SystemUIHook {
             (rootRightScreen - clockRightScreen + dp(ctx, 4) - ox).coerceAtLeast(0)
         }
         lp.marginEnd = marginEnd
-        lp.marginTop = oy
         lp.topMargin = oy
         runCatching { tv.layoutParams = lp }
     }
