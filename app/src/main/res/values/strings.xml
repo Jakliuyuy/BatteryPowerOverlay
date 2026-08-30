@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">电池功率悬浮窗</string>
+    <string name="overlay_switch">悬浮窗显示</string>
+    <string name="refresh_label">刷新频率</string>
+    <string name="show_label">显示内容</string>
+    <string name="show_power">功率 (W)</string>
+    <string name="show_current">电流 (mA)</string>
+    <string name="show_voltage">电压 (V)</string>
+    <string name="show_level">电量 (%)</string>
+    <string name="text_size_label">字体大小</string>
+    <string name="hook_label">状态栏 Hook（LSPosed）</string>
+</resources>
