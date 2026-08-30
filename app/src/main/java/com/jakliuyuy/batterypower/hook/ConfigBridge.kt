@@ -9,7 +9,36 @@ import android.database.Cursor
  */
 object ConfigBridge {
 
+    /** 最近一次成功拉取的配置缓存：主 app 进程被杀时兜底，避免回落默认值 */
+    @Volatile
+    private var cached: Map<String, String>? = null
+
+    /** 下次允许重试 provider 的时间戳（失败节流，避免每秒狂拉起 provider） */
+    @Volatile
+    private var nextRetryAt = 0L
+
     fun query(ctx: Context): Map<String, String> {
+        val now = System.currentTimeMillis()
+        if (now >= nextRetryAt) {
+            val fresh = tryQuery(ctx)
+            if (fresh.isNotEmpty()) {
+                cached = fresh
+                nextRetryAt = 0
+                return fresh
+            }
+            // 主 app 被杀或 provider 未就绪：10 秒后再试，期间用缓存
+            nextRetryAt = now + 10_000
+        }
+        return cached ?: emptyMap()
+    }
+
+    /** 清除缓存（仅测试用） */
+    fun invalidate() {
+        cached = null
+        nextRetryAt = 0
+    }
+
+    private fun tryQuery(ctx: Context): Map<String, String> {
         return try {
             val cursor: Cursor? = ctx.contentResolver.query(
                 com.jakliuyuy.batterypower.config.ConfigProvider.CONTENT_URI,
