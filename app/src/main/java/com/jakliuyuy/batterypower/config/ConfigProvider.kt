@@ -49,6 +49,8 @@ class ConfigProvider : ContentProvider() {
 
         /** hook 需要读取的全部配置键 */
         val ALL_KEYS = arrayOf(
+            "hook_enabled",
+            "show_unit",
             "hook_side",
             "hook_offset_x",
             "hook_offset_y",

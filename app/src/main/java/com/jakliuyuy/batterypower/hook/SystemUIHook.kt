@@ -73,7 +73,7 @@ object SystemUIHook {
         tv.post(runnable)
     }
 
-    /** 位置（智能避让 + x/y 偏移）/ 颜色 / 字号 实时应用 */
+    /** 位置（智能避让 + x/y 偏移）/ 颜色 / 字号 / 显示开关 实时应用 */
     private fun applyConfig(
         tv: TextView,
         parent: ViewGroup,
@@ -81,6 +81,11 @@ object SystemUIHook {
         cfg: Map<String, String>
     ) {
         val ctx = tv.context
+
+        // 显示开关
+        val enabled = ConfigBridge.boolOf(cfg, "hook_enabled", true)
+        tv.visibility = if (enabled) View.VISIBLE else View.GONE
+        if (!enabled) return
 
         // 颜色/字号
         tv.textSize = ConfigBridge.floatOf(cfg, "hook_text_size", 11f)
@@ -159,22 +164,31 @@ object SystemUIHook {
             val temp = bintent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
             val ma = if (cur == Int.MIN_VALUE) 0 else cur
             val w = ma / 1000.0 * (mv / 1000.0)
+            val unit = ConfigBridge.boolOf(cfg, "show_unit", true)
 
             val parts = mutableListOf<String>()
             if (ConfigBridge.boolOf(cfg, "hook_show_power", true)) {
-                parts.add(if (w >= 10) String.format("%.1fW", w) else String.format("%.2fW", w))
+                parts.add(if (unit) {
+                    if (w >= 10) String.format("%.1fW", w) else String.format("%.2fW", w)
+                } else {
+                    if (w >= 10) String.format("%.1f", w) else String.format("%.2f", w)
+                })
             }
             if (ConfigBridge.boolOf(cfg, "hook_show_current", false)) {
-                parts.add(if (kotlin.math.abs(ma) >= 1000) String.format("%.2fA", ma / 1000.0) else "${ma}mA")
+                parts.add(if (unit) {
+                    if (kotlin.math.abs(ma) >= 1000) String.format("%.2fA", ma / 1000.0) else "${ma}mA"
+                } else {
+                    if (kotlin.math.abs(ma) >= 1000) String.format("%.2f", ma / 1000.0) else "$ma"
+                })
             }
             if (ConfigBridge.boolOf(cfg, "hook_show_voltage", false)) {
-                parts.add(String.format("%.2fV", mv / 1000.0))
+                parts.add(if (unit) String.format("%.2fV", mv / 1000.0) else String.format("%.2f", mv / 1000.0))
             }
             if (ConfigBridge.boolOf(cfg, "hook_show_temp", false) && temp > 0) {
-                parts.add(String.format("%.1f°C", temp / 10.0))
+                parts.add(if (unit) String.format("%.1f°C", temp / 10.0) else String.format("%.1f", temp / 10.0))
             }
             if (ConfigBridge.boolOf(cfg, "hook_show_level", true)) {
-                parts.add("$cap%")
+                parts.add(if (unit) "$cap%" else "$cap")
             }
             if (parts.isEmpty()) "--" else parts.joinToString(" ")
         } catch (e: Exception) {

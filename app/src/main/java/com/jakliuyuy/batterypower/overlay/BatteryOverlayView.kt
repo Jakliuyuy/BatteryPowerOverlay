@@ -89,12 +89,22 @@ class BatteryOverlayView(context: Context) : TextView(context) {
 
     private fun update() {
         val s = BatteryReader.read(context)
+        val unit = SettingsStore.showUnit
         val parts = mutableListOf<String>()
-        if (SettingsStore.showPower) parts.add(s.powerText())
-        if (SettingsStore.showCurrent) parts.add(formatCurrent(s.currentMa))
-        if (SettingsStore.showVoltage) parts.add(String.format("%.2fV", s.voltageMv / 1000.0))
-        if (SettingsStore.showTemp && s.tempC > 0) parts.add(String.format("%.1f°C", s.tempC))
-        if (SettingsStore.showLevel) parts.add("${s.level}%")
+        if (SettingsStore.showPower) parts.add(if (unit) s.powerText() else s.powerText().removeSuffix("W"))
+        if (SettingsStore.showCurrent) {
+            val t = formatCurrent(s.currentMa)
+            parts.add(if (unit) t else t.filter { it.isDigit() || it == '-' || it == '.' })
+        }
+        if (SettingsStore.showVoltage) {
+            val t = String.format("%.2fV", s.voltageMv / 1000.0)
+            parts.add(if (unit) t else String.format("%.2f", s.voltageMv / 1000.0))
+        }
+        if (SettingsStore.showTemp && s.tempC > 0) {
+            val t = String.format("%.1f°C", s.tempC)
+            parts.add(if (unit) t else String.format("%.1f", s.tempC))
+        }
+        if (SettingsStore.showLevel) parts.add(if (unit) "${s.level}%" else "${s.level}")
         text = if (parts.isEmpty()) s.powerText() else parts.joinToString(" ")
         setTextColor(SettingsStore.textColor)
     }

@@ -74,6 +74,12 @@
             android:textSize="15sp"
             android:textStyle="bold" />
 
+        <CheckBox
+            android:id="@+id/cb_show_unit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="显示单位（W/mA/V/°C/%）" />
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -150,6 +156,23 @@
             android:text="状态栏 Hook 设置（LSPosed）"
             android:textSize="15sp"
             android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="状态栏显示"
+                android:textSize="15sp" />
+            <Switch
+                android:id="@+id/sw_hook_enabled"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="wrap_content"
@@ -293,6 +316,13 @@
             android:layout_marginTop="14dp"
             android:textSize="12sp"
             android:textColor="#666666" />
+
+        <Button
+            android:id="@+id/btn_restart_sui"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="重启 SystemUI（加载/重载 Hook）" />
 
         <Button
             android:id="@+id/btn_diagnostic"

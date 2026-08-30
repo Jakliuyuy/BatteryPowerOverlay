@@ -114,6 +114,14 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
         })
 
+        // ---------- 通用：单位显示 ----------
+        binding.cbShowUnit.isChecked = SettingsStore.showUnit
+        binding.cbShowUnit.setOnCheckedChangeListener { _, b -> SettingsStore.showUnit = b }
+
+        // ---------- Hook 模式：显示开关 ----------
+        binding.swHookEnabled.isChecked = SettingsStore.hookEnabled
+        binding.swHookEnabled.setOnCheckedChangeListener { _, b -> SettingsStore.hookEnabled = b }
+
         // ---------- Hook 模式：位置 ----------
         binding.radioHookSide.check(
             if (SettingsStore.hookSide == 1) R.id.rb_hook_left else R.id.rb_hook_right
@@ -187,6 +195,21 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnDiagnostic.setOnClickListener {
             startActivity(Intent(this, DiagnosticActivity::class.java))
+        }
+
+        // ---------- 重启 SystemUI（root pkill，系统自动拉起，hook 重新注入） ----------
+        binding.btnRestartSui.setOnClickListener {
+            Toast.makeText(this, "正在重启 SystemUI...", Toast.LENGTH_SHORT).show()
+            kotlin.concurrent.thread {
+                val ok = RootHelper.exec("pkill -f com.android.systemui") != null
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        if (ok) "SystemUI 已重启，Hook 已重载" else "重启失败（需要 root）",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
         }
     }
 

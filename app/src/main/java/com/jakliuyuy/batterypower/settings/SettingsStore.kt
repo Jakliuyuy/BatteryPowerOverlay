@@ -18,13 +18,13 @@ object SettingsStore {
         get() = sp(AppContext.get()).getInt("mode", MODE_OVERLAY)
         set(v) = sp(AppContext.get()).edit().putInt("mode", v).apply()
 
-    // 悬浮窗位置
+    // 悬浮窗位置（用 commit 同步落盘：进程被杀瞬间不丢数据）
     var overlayX: Int
         get() = sp(AppContext.get()).getInt("overlay_x", -1)
-        set(v) = sp(AppContext.get()).edit().putInt("overlay_x", v).apply()
+        set(v) = sp(AppContext.get()).edit().putInt("overlay_x", v).commit()
     var overlayY: Int
         get() = sp(AppContext.get()).getInt("overlay_y", -1)
-        set(v) = sp(AppContext.get()).edit().putInt("overlay_y", v).apply()
+        set(v) = sp(AppContext.get()).edit().putInt("overlay_y", v).commit()
 
     // 显示项
     var showPower: Boolean
@@ -56,8 +56,17 @@ object SettingsStore {
         get() = sp(AppContext.get()).getInt("text_color", 0xFFFFFFFF.toInt())
         set(v) = sp(AppContext.get()).edit().putInt("text_color", v).apply()
 
-    // Hook 模式配置（SystemUI 进程用 XSharedPreferences 读取）
+    // Hook 模式配置（SystemUI 进程用 ContentProvider 读取）
     const val SP_NAME = "battery_power_prefs"
+
+    var hookEnabled: Boolean  // 状态栏显示开关
+        get() = sp(AppContext.get()).getBoolean("hook_enabled", true)
+        set(v) = sp(AppContext.get()).edit().putBoolean("hook_enabled", v).apply()
+
+    // 单位显示开关（false = 只显示数值）
+    var showUnit: Boolean
+        get() = sp(AppContext.get()).getBoolean("show_unit", true)
+        set(v) = sp(AppContext.get()).edit().putBoolean("show_unit", v).apply()
 
     var hookSide: Int  // 0=时钟右侧 1=时钟左侧
         get() = sp(AppContext.get()).getInt("hook_side", 0)
