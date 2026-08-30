@@ -62,6 +62,15 @@ object SettingsStore {
     var hookSide: Int  // 0=时钟右侧 1=时钟左侧
         get() = sp(AppContext.get()).getInt("hook_side", 0)
         set(v) = sp(AppContext.get()).edit().putInt("hook_side", v).apply()
+    var hookOffsetX: Int  // 水平偏移 px（-200 ~ 200）
+        get() = sp(AppContext.get()).getInt("hook_offset_x", 0)
+        set(v) = sp(AppContext.get()).edit().putInt("hook_offset_x", v).apply()
+    var hookOffsetY: Int  // 垂直偏移 px（-100 ~ 100）
+        get() = sp(AppContext.get()).getInt("hook_offset_y", 0)
+        set(v) = sp(AppContext.get()).edit().putInt("hook_offset_y", v).apply()
+    var hookAvoid: Boolean  // 智能避让右侧图标
+        get() = sp(AppContext.get()).getBoolean("hook_avoid", true)
+        set(v) = sp(AppContext.get()).edit().putBoolean("hook_avoid", v).apply()
     var hookShowPower: Boolean
         get() = sp(AppContext.get()).getBoolean("hook_show_power", true)
         set(v) = sp(AppContext.get()).edit().putBoolean("hook_show_power", v).apply()

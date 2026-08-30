@@ -30,6 +30,12 @@
             android:name=".DiagnosticActivity"
             android:exported="false" />
 
+        <!-- 跨进程配置通道（hook 在 SystemUI 进程读取） -->
+        <provider
+            android:name=".config.ConfigProvider"
+            android:authorities="com.jakliuyuy.batterypower.config"
+            android:exported="true" />
+
         <service
             android:name=".overlay.OverlayService"
             android:exported="false"

@@ -5,54 +5,134 @@ import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
 
 /**
- * root 通道：直接读取内核电池节点，精度最高。
- * 所有读取带超时 + 静默降级，任何异常返回 null。
+ * root 通道（KernelSU/Magisk 兼容）：**常驻 su shell 会话**，避免每秒拉起 su 进程被限流。
+ *
+ * 实测（PLR110 / Android 16 / 内核 6.12）：
+ * - current_now 单位是 **mA**（不是 μA！）
+ * - voltage_now 单位 μV
+ * - temp 单位 0.1°C
+ * - power_now 节点存在（μW），直接就是功率，优先使用
  */
 object RootHelper {
 
     data class BatteryRaw(
-        val currentUa: Int,   // 微安，正值充电 负值放电
-        val voltageUv: Int,   // 微伏
-        val capacity: Int,    // 百分比
-        val tempC: Double     // 摄氏度
+        val powerUw: Long?,    // μW，power_now 直读（最优）
+        val currentMa: Int?,   // mA
+        val voltageUv: Int?,   // μV
+        val capacity: Int,     // %
+        val tempC: Double      // °C
     )
 
-    private const val CURRENT_PATH = "/sys/class/power_supply/battery/current_now"
-    private const val VOLTAGE_PATH = "/sys/class/power_supply/battery/voltage_now"
-    private const val CAPACITY_PATH = "/sys/class/power_supply/battery/capacity"
-    private const val TEMP_PATH = "/sys/class/power_supply/battery/temp"
+    private const val BASE = "/sys/class/power_supply/battery"
 
-    /** 尝试 su 读取；无 root 或失败返回 null */
-    fun read(): BatteryRaw? {
+    @Volatile
+    private var suProcess: Process? = null
+    @Volatile
+    private var suWriter: java.io.OutputStream? = null
+    private var sessionFailed = false
+
+    /** 拉起常驻 su 会话（首次调用时），返回是否可用 */
+    @Synchronized
+    fun ensureSession(): Boolean {
+        if (sessionFailed) return false
+        if (suProcess?.isAlive == true && suWriter != null) return true
         return try {
-            val out = exec("cat $CURRENT_PATH; cat $VOLTAGE_PATH; cat $CAPACITY_PATH; cat $TEMP_PATH") ?: return null
-            val lines = out.lines().filter { it.isNotBlank() && it.all { c -> c.isDigit() || c == '-' } }
-            if (lines.size < 4) return null
-            BatteryRaw(
-                currentUa = lines[0].toIntOrNull() ?: return null,
-                voltageUv = lines[1].toIntOrNull() ?: return null,
-                capacity = lines[2].toIntOrNull() ?: return null,
-                tempC = (lines[3].toIntOrNull() ?: 0) / 10.0
-            )
+            val p = ProcessBuilder("su")
+                .redirectErrorStream(true)
+                .start()
+            suProcess = p
+            suWriter = p.outputStream
+            // 验证会话可用
+            val ok = exec("id")?.contains("uid=0") == true
+            if (!ok) {
+                sessionFailed = true
+                destroy()
+            }
+            ok
         } catch (e: Exception) {
+            sessionFailed = true
+            false
+        }
+    }
+
+    /**
+     * 常驻会话内执行命令，返回 stdout（去除命令回显）。
+     * 失败时销毁会话，下次自动重建。
+     */
+    @Synchronized
+    fun exec(cmd: String): String? {
+        if (!ensureSession()) return null
+        return try {
+            val w = suWriter ?: return null
+            val marker = "KOMARI_DONE_${System.nanoTime()}"
+            val full = "$cmd; echo $marker\n"
+            w.write(full.toByteArray())
+            w.flush()
+            val r = BufferedReader(InputStreamReader(suProcess!!.inputStream))
+            val sb = StringBuilder()
+            var line: String?
+            val deadline = System.currentTimeMillis() + 5000
+            while (System.currentTimeMillis() < deadline) {
+                if (r.ready()) {
+                    line = r.readLine() ?: break
+                    if (line.contains(marker)) return sb.toString()
+                    sb.appendLine(line)
+                } else {
+                    Thread.sleep(20)
+                }
+            }
+            null // 超时
+        } catch (e: Exception) {
+            destroy()
             null
         }
     }
 
-    fun isAvailable(): Boolean = read() != null
+    /** 读取电池数据；power_now 优先，current×voltage 兜底 */
+    fun read(): BatteryRaw? {
+        // 一次会话读全部节点
+        val out = exec(
+            "cat $BASE/power_now $BASE/current_now $BASE/voltage_now $BASE/temp $BASE/capacity 2>/dev/null"
+        ) ?: return null
+        val lines = out.lines().filter { it.isNotBlank() }
+        if (lines.isEmpty()) return null
 
-    private fun exec(cmd: String): String? {
-        return try {
-            val p = ProcessBuilder("su", "-c", cmd)
-                .redirectErrorStream(true)
-                .start()
-            val out = BufferedReader(InputStreamReader(p.inputStream)).readText().trim()
-            if (!p.waitFor(2, TimeUnit.SECONDS)) {
-                p.destroy()
-                null
-            } else out
-        } catch (e: Exception) {
-            null
+        // cat 多文件时每行一个值（可能带标题行，取数字行）
+        val nums = lines.mapNotNull { it.trim().toLongOrNull() }
+        if (nums.isEmpty()) return null
+
+        // power_now, current_now, voltage_now, temp, capacity 顺序
+        val power = nums.getOrNull(0)
+        val current = nums.getOrNull(1)
+        val voltage = nums.getOrNull(2)
+        val temp = nums.getOrNull(3)
+        val cap = nums.getOrNull(4) ?: 0
+
+        return BatteryRaw(
+            powerUw = power?.takeIf { it != 0L },
+            currentMa = current?.toInt(),
+            voltageUv = voltage?.toInt(),
+            capacity = cap.toInt().coerceIn(0, 100),
+            tempC = (temp ?: 0) / 10.0
+        )
+    }
+
+    fun isAvailable(): Boolean {
+        if (!ensureSession()) return false
+        return read() != null
+    }
+
+    fun destroy() {
+        try {
+            suWriter?.close()
+        } catch (_: Exception) {
         }
+        try {
+            suProcess?.destroy()
+        } catch (_: Exception) {
+        }
+        suProcess = null
+        suWriter = null
+        sessionFailed = false
     }
 }

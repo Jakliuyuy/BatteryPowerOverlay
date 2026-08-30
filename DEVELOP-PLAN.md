@@ -35,6 +35,26 @@
 3. **LSPosed 兼容性**：用户实测 hook 已在 SystemUI 生效（状态栏有读数）→ 框架链路 OK，配置失效与 LSPosed 无关，坐实 XSharedPreferences 根因。
 4. **温度节点**：内核 6.12 的 battery/temp 仍为标准节点（0.1°C），root 可读；降级路径用 sticky 广播 EXTRA_TEMPERATURE（系统 API 隐藏，广播可用）。
 
+### 2.0.1 实测诊断结论（v1.1.1 诊断版，用户实机回报）
+
+| 项目 | 实测值 | 结论 |
+|---|---|---|
+| root 框架 | **KernelSU**（`u:r:ksu:s0`），非 Magisk | su 通道可用；弹窗授权语义不同 |
+| 供电节点 | 仅 `battery` / `usb` / uci 源 | **单电芯**，无 battery_2，功率无需 ×2 |
+| current_now | **865（单位 mA！）** | **非 μA**！按 μA 处理会差 1000 倍 → 这是悬浮窗 0.00W 根因之一 |
+| voltage_now | 4005000（μV = 4.005V） | 正常 |
+| temp | 386（0.1°C = 38.6°C） | 正常 |
+| capacity | 66 | 正常 |
+| **power_now / power_avg** | **节点存在（诊断脚本未读值）** | **直接读功率的最优路径**，无需电流×电压 |
+| current_avg / qcom-battery / main-battery / battery_2 | 全部不存在 | 无备用路径 |
+| dumpsys battery | OPLUS 服务报 current 608mA | 与 sysfs 865mA 同量级（过滤/平均差异） |
+
+**实测结论 → 设计变更**：
+1. **功率读取**：root 路径**优先读 `power_now`**（单位 μW，直接是功率，规避一切单位歧义）；fallback `current_now`（按 **mA** 换算）× `voltage_now`
+2. **su 调用**：悬浮窗每秒拉起 su 进程在 KernelSU 上会被限流/超时（2s 太短）→ 改为**常驻 su shell 会话复用**（启动时拉起一次，stdin 发命令）
+3. 单位标准化：`current_now` mA / 1000 = A；`voltage_now` μV / 1e6 = V
+4. 双电芯排除，功率公式无 ×2
+
 ### 2.1 为什么 Hook 的位置/颜色/温度"全都不生效" —— 配置根本没传过去
 
 **现象**：你看到的永远是默认值（白色、11sp、时钟右侧、不显示温度）——因为 SystemUI 进程里读到的一直是默认配置。

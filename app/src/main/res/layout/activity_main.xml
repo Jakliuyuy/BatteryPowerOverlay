@@ -176,6 +176,60 @@
                 android:text="时钟左侧" />
         </RadioGroup>
 
+        <CheckBox
+            android:id="@+id/cb_hook_avoid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="智能避让（自动避开右侧图标）" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="水平偏移"
+                android:textSize="13sp" />
+            <SeekBar
+                android:id="@+id/seek_hook_offset_x"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:max="400" />
+            <TextView
+                android:id="@+id/tv_hook_offset_x"
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:text="0px"
+                android:gravity="end" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="垂直偏移"
+                android:textSize="13sp" />
+            <SeekBar
+                android:id="@+id/seek_hook_offset_y"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:max="200" />
+            <TextView
+                android:id="@+id/tv_hook_offset_y"
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:text="0px"
+                android:gravity="end" />
+        </LinearLayout>
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
