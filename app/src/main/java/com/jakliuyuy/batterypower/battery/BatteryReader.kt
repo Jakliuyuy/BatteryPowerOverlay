@@ -33,8 +33,12 @@ object BatteryReader {
         RootHelper.read()?.let { raw ->
             lastRootOk = true
             val voltageV = (raw.voltageUv ?: 0) / 1_000_000.0
-            val powerW = raw.powerUw?.let { it / 1_000_000.0 }
+            val rawW = raw.powerUw?.let { it / 1_000_000.0 }
                 ?: (raw.currentMa ?: 0) / 1000.0 * voltageV
+            // 充电时节点值为负（电流流入电池），充电显示正功率
+            val charging = raw.status.contains("Charg", ignoreCase = true) ||
+                raw.status.contains("Full", ignoreCase = true)
+            val powerW = if (charging) kotlin.math.abs(rawW) else rawW
             return Sample(
                 powerW = powerW,
                 currentMa = raw.currentMa ?: 0,

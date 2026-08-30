@@ -16,11 +16,12 @@ import java.util.concurrent.TimeUnit
 object RootHelper {
 
     data class BatteryRaw(
-        val powerUw: Long?,    // μW，power_now 直读（最优）
-        val currentMa: Int?,   // mA
+        val powerUw: Long?,    // μW，power_now 直读（最优，充电为负）
+        val currentMa: Int?,   // mA（充电为负）
         val voltageUv: Int?,   // μV
         val capacity: Int,     // %
-        val tempC: Double      // °C
+        val tempC: Double,     // °C
+        val status: String     // Charging / Discharging / Full ...
     )
 
     private const val BASE = "/sys/class/power_supply/battery"
@@ -90,18 +91,17 @@ object RootHelper {
 
     /** 读取电池数据；power_now 优先，current×voltage 兜底 */
     fun read(): BatteryRaw? {
-        // 一次会话读全部节点
         val out = exec(
-            "cat $BASE/power_now $BASE/current_now $BASE/voltage_now $BASE/temp $BASE/capacity 2>/dev/null"
+            "cat $BASE/power_now $BASE/current_now $BASE/voltage_now $BASE/temp $BASE/capacity $BASE/status 2>/dev/null"
         ) ?: return null
         val lines = out.lines().filter { it.isNotBlank() }
         if (lines.isEmpty()) return null
 
-        // cat 多文件时每行一个值（可能带标题行，取数字行）
+        // 数字行按序取前 5 个，非数字行是 status
         val nums = lines.mapNotNull { it.trim().toLongOrNull() }
-        if (nums.isEmpty()) return null
+        if (nums.size < 4) return null
+        val statusLine = lines.lastOrNull { it.trim().toLongOrNull() == null }?.trim() ?: ""
 
-        // power_now, current_now, voltage_now, temp, capacity 顺序
         val power = nums.getOrNull(0)
         val current = nums.getOrNull(1)
         val voltage = nums.getOrNull(2)
@@ -113,7 +113,8 @@ object RootHelper {
             currentMa = current?.toInt(),
             voltageUv = voltage?.toInt(),
             capacity = cap.toInt().coerceIn(0, 100),
-            tempC = (temp ?: 0) / 10.0
+            tempC = (temp ?: 0) / 10.0,
+            status = statusLine
         )
     }
 
