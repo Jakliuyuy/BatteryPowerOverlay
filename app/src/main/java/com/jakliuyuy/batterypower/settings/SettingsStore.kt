@@ -63,6 +63,11 @@ object SettingsStore {
         get() = sp(AppContext.get()).getBoolean("hook_enabled", true)
         set(v) = sp(AppContext.get()).edit().putBoolean("hook_enabled", v).apply()
 
+    // 状态栏刷新频率 ms（500/1000/2000/3000/5000）
+    var hookRefreshMs: Long
+        get() = sp(AppContext.get()).getLong("hook_refresh_ms", 1000L)
+        set(v) = sp(AppContext.get()).edit().putLong("hook_refresh_ms", v).apply()
+
     // 单位显示开关（false = 只显示数值）
     var showUnit: Boolean
         get() = sp(AppContext.get()).getBoolean("show_unit", true)

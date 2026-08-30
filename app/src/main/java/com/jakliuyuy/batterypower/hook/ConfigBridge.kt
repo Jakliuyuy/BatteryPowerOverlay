@@ -101,4 +101,7 @@ object ConfigBridge {
 
     fun floatOf(cfg: Map<String, String>, key: String, def: Float): Float =
         cfg[key]?.toFloatOrNull() ?: def
+
+    fun longOf(cfg: Map<String, String>, key: String, def: Long): Long =
+        cfg[key]?.toLongOrNull() ?: def
 }

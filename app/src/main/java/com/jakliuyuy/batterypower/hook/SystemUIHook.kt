@@ -77,7 +77,7 @@ object SystemUIHook {
         tv.translationZ = ELEVATION
         root.addView(tv)
 
-        // 1s 刷新循环
+        // 刷新循环（频率可配置 0.5s~5s）
         val handler = Handler(Looper.getMainLooper())
         val runnable = object : Runnable {
             override fun run() {
@@ -85,7 +85,8 @@ object SystemUIHook {
                 val cfg = ConfigBridge.query(ctx)
                 applyConfig(tv, clock, root, cfg)
                 tv.text = readPower(ctx, cfg)
-                handler.postDelayed(this, 1000L)
+                val refreshMs = ConfigBridge.longOf(cfg, "hook_refresh_ms", 1000L).coerceIn(500, 5000)
+                handler.postDelayed(this, refreshMs)
             }
         }
         tv.post(runnable)
@@ -112,7 +113,8 @@ object SystemUIHook {
                 tv.textSize = ConfigBridge.floatOf(cfg, "hook_text_size", 11f)
                 tv.setTextColor(ConfigBridge.intOf(cfg, "hook_text_color", Color.WHITE))
                 tv.text = readPower(ctx, cfg)
-                handler.postDelayed(this, 1000L)
+                val refreshMs = ConfigBridge.longOf(cfg, "hook_refresh_ms", 1000L).coerceIn(500, 5000)
+                handler.postDelayed(this, refreshMs)
             }
         }
         tv.post(runnable)

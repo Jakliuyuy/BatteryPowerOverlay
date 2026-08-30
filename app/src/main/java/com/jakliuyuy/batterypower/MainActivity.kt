@@ -100,6 +100,11 @@ class MainActivity : AppCompatActivity() {
             binding.colorRow, SettingsStore.textColor,
             update = { SettingsStore.textColor = it }
         )
+        binding.btnColorCustom.setOnClickListener {
+            ColorPickerDialog.show(this, SettingsStore.textColor) { c ->
+                SettingsStore.textColor = c
+            }
+        }
 
         // ---------- 悬浮窗字体大小 ----------
         binding.seekTextSize.progress = ((SettingsStore.textSizeSp - 8f) / 2f).toInt().coerceIn(0, 10)
@@ -121,6 +126,27 @@ class MainActivity : AppCompatActivity() {
         // ---------- Hook 模式：显示开关 ----------
         binding.swHookEnabled.isChecked = SettingsStore.hookEnabled
         binding.swHookEnabled.setOnCheckedChangeListener { _, b -> SettingsStore.hookEnabled = b }
+
+        // ---------- Hook 模式：刷新频率 ----------
+        val hookFreqs = arrayOf("0.5 秒", "1 秒", "2 秒", "3 秒", "5 秒")
+        val hookFreqVals = longArrayOf(500L, 1000L, 2000L, 3000L, 5000L)
+        binding.spinnerHookRefresh.adapter =
+            ArrayAdapter(this, android.R.layout.simple_spinner_item, hookFreqs)
+        binding.spinnerHookRefresh.setSelection(
+            hookFreqVals.indexOfFirst { it == SettingsStore.hookRefreshMs }.coerceAtLeast(0)
+        )
+        binding.spinnerHookRefresh.onItemSelectedListener = object :
+            android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: android.widget.AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                SettingsStore.hookRefreshMs = hookFreqVals[position]
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
 
         // ---------- Hook 模式：位置 ----------
         binding.radioHookSide.check(
@@ -158,6 +184,24 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
         })
 
+        // ---------- x/y 偏移 +/- 按钮（步进 10px） ----------
+        fun stepX(delta: Int) {
+            val v = (SettingsStore.hookOffsetX + delta).coerceIn(-2000, 2000)
+            SettingsStore.hookOffsetX = v
+            binding.seekHookOffsetX.progress = v + 2000
+            binding.tvHookOffsetX.text = "${v}px"
+        }
+        fun stepY(delta: Int) {
+            val v = (SettingsStore.hookOffsetY + delta).coerceIn(-1000, 1000)
+            SettingsStore.hookOffsetY = v
+            binding.seekHookOffsetY.progress = v + 1000
+            binding.tvHookOffsetY.text = "${v}px"
+        }
+        binding.btnHookOxMinus.setOnClickListener { stepX(-10) }
+        binding.btnHookOxPlus.setOnClickListener { stepX(10) }
+        binding.btnHookOyMinus.setOnClickListener { stepY(-10) }
+        binding.btnHookOyPlus.setOnClickListener { stepY(10) }
+
         // ---------- Hook 模式：显示项 ----------
         binding.cbHookPower.isChecked = SettingsStore.hookShowPower
         binding.cbHookCurrent.isChecked = SettingsStore.hookShowCurrent
@@ -175,6 +219,11 @@ class MainActivity : AppCompatActivity() {
             binding.colorRowHook, SettingsStore.hookTextColor,
             update = { SettingsStore.hookTextColor = it }
         )
+        binding.btnColorCustomHook.setOnClickListener {
+            ColorPickerDialog.show(this, SettingsStore.hookTextColor) { c ->
+                SettingsStore.hookTextColor = c
+            }
+        }
         binding.seekHookTextSize.progress = ((SettingsStore.hookTextSizeSp - 8f) / 2f).toInt().coerceIn(0, 10)
         binding.tvHookTextSize.text = "字号 ${SettingsStore.hookTextSizeSp.toInt()}sp"
         binding.seekHookTextSize.setOnSeekBarChangeListener(object :
