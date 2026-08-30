@@ -21,10 +21,10 @@ object SettingsStore {
     // 悬浮窗位置（用 commit 同步落盘：进程被杀瞬间不丢数据）
     var overlayX: Int
         get() = sp(AppContext.get()).getInt("overlay_x", -1)
-        set(v) = sp(AppContext.get()).edit().putInt("overlay_x", v).commit()
+        set(v) { sp(AppContext.get()).edit().putInt("overlay_x", v).commit() }
     var overlayY: Int
         get() = sp(AppContext.get()).getInt("overlay_y", -1)
-        set(v) = sp(AppContext.get()).edit().putInt("overlay_y", v).commit()
+        set(v) { sp(AppContext.get()).edit().putInt("overlay_y", v).commit() }
 
     // 显示项
     var showPower: Boolean
