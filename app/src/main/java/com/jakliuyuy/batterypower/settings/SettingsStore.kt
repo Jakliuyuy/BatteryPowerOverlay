@@ -39,6 +39,9 @@ object SettingsStore {
     var showLevel: Boolean
         get() = sp(AppContext.get()).getBoolean("show_level", true)
         set(v) = sp(AppContext.get()).edit().putBoolean("show_level", v).apply()
+    var showTemp: Boolean
+        get() = sp(AppContext.get()).getBoolean("show_temp", false)
+        set(v) = sp(AppContext.get()).edit().putBoolean("show_temp", v).apply()
 
     // 刷新频率 ms
     var refreshMs: Long
@@ -49,14 +52,37 @@ object SettingsStore {
     var textSizeSp: Float
         get() = sp(AppContext.get()).getFloat("text_size", 14f)
         set(v) = sp(AppContext.get()).edit().putFloat("text_size", v).apply()
-    var bgAlpha: Int
-        get() = sp(AppContext.get()).getInt("bg_alpha", 120)
-        set(v) = sp(AppContext.get()).edit().putInt("bg_alpha", v).apply()
+    var textColor: Int
+        get() = sp(AppContext.get()).getInt("text_color", 0xFFFFFFFF.toInt())
+        set(v) = sp(AppContext.get()).edit().putInt("text_color", v).apply()
 
-    // Hook 模式：显示在时钟哪一侧（0=右侧 1=左侧）
-    var hookSide: Int
+    // Hook 模式配置（SystemUI 进程用 XSharedPreferences 读取）
+    const val SP_NAME = "battery_power_prefs"
+
+    var hookSide: Int  // 0=时钟右侧 1=时钟左侧
         get() = sp(AppContext.get()).getInt("hook_side", 0)
         set(v) = sp(AppContext.get()).edit().putInt("hook_side", v).apply()
+    var hookShowPower: Boolean
+        get() = sp(AppContext.get()).getBoolean("hook_show_power", true)
+        set(v) = sp(AppContext.get()).edit().putBoolean("hook_show_power", v).apply()
+    var hookShowCurrent: Boolean
+        get() = sp(AppContext.get()).getBoolean("hook_show_current", false)
+        set(v) = sp(AppContext.get()).edit().putBoolean("hook_show_current", v).apply()
+    var hookShowVoltage: Boolean
+        get() = sp(AppContext.get()).getBoolean("hook_show_voltage", false)
+        set(v) = sp(AppContext.get()).edit().putBoolean("hook_show_voltage", v).apply()
+    var hookShowLevel: Boolean
+        get() = sp(AppContext.get()).getBoolean("hook_show_level", true)
+        set(v) = sp(AppContext.get()).edit().putBoolean("hook_show_level", v).apply()
+    var hookShowTemp: Boolean
+        get() = sp(AppContext.get()).getBoolean("hook_show_temp", false)
+        set(v) = sp(AppContext.get()).edit().putBoolean("hook_show_temp", v).apply()
+    var hookTextColor: Int
+        get() = sp(AppContext.get()).getInt("hook_text_color", 0xFFFFFFFF.toInt())
+        set(v) = sp(AppContext.get()).edit().putInt("hook_text_color", v).apply()
+    var hookTextSizeSp: Float
+        get() = sp(AppContext.get()).getFloat("hook_text_size", 11f)
+        set(v) = sp(AppContext.get()).edit().putFloat("hook_text_size", v).apply()
 }
 
 /** 简化 Context 获取（悬浮窗服务/Application 场景） */

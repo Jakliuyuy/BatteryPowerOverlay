@@ -55,9 +55,10 @@ class BatteryOverlayView(context: Context) : TextView(context) {
 
     init {
         textSize = SettingsStore.textSizeSp
-        setTextColor(Color.WHITE)
-        setBackgroundColor(Color.argb(SettingsStore.bgAlpha, 0, 0, 0))
-        setPadding(dp(8), dp(2), dp(8), dp(2))
+        setTextColor(SettingsStore.textColor)
+        // 全透明：无背景、无边框，Scene 迷你监视器风格
+        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        setPadding(dp(4), dp(1), dp(4), dp(1))
         setOnTouchListener(::onTouch)
         update()
     }
@@ -90,13 +91,17 @@ class BatteryOverlayView(context: Context) : TextView(context) {
         val s = BatteryReader.read(context)
         val parts = mutableListOf<String>()
         if (SettingsStore.showPower) parts.add(s.powerText())
-        if (SettingsStore.showCurrent) {
-            val cur = if (s.currentMa == 0) "0mA" else "${s.currentMa}mA"
-            parts.add(cur)
-        }
-        if (SettingsStore.showVoltage) parts.add("${s.voltageMv / 1000.0}V")
+        if (SettingsStore.showCurrent) parts.add(formatCurrent(s.currentMa))
+        if (SettingsStore.showVoltage) parts.add(String.format("%.2fV", s.voltageMv / 1000.0))
+        if (SettingsStore.showTemp && s.tempC > 0) parts.add(String.format("%.1f°C", s.tempC))
         if (SettingsStore.showLevel) parts.add("${s.level}%")
         text = if (parts.isEmpty()) s.powerText() else parts.joinToString(" ")
+        setTextColor(SettingsStore.textColor)
+    }
+
+    private fun formatCurrent(ma: Int): String {
+        val abs = kotlin.math.abs(ma)
+        return if (abs >= 1000) String.format("%.2fA", ma / 1000.0) else "${ma}mA"
     }
 
     private fun onTouch(v: View, e: MotionEvent): Boolean {

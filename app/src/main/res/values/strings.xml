@@ -7,6 +7,7 @@
     <string name="show_power">功率 (W)</string>
     <string name="show_current">电流 (mA)</string>
     <string name="show_voltage">电压 (V)</string>
+    <string name="show_temp">温度 (°C)</string>
     <string name="show_level">电量 (%)</string>
     <string name="text_size_label">字体大小</string>
     <string name="hook_label">状态栏 Hook（LSPosed）</string>
