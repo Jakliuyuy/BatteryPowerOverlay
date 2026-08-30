@@ -26,6 +26,10 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".DiagnosticActivity"
+            android:exported="false" />
+
         <service
             android:name=".overlay.OverlayService"
             android:exported="false"

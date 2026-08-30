@@ -154,7 +154,12 @@ class MainActivity : AppCompatActivity() {
         binding.tvHookHint.text =
             "Hook 模式：LSPosed 启用本模块 → 勾选 SystemUI → 重启 SystemUI 一次\n" +
             "之后在 App 里改配置（位置/颜色/显示项）1 秒内实时生效，无需再重启\n" +
-            "当前 root 状态：${if (RootHelper.isAvailable()) "已获取 ✓（内核节点直读）" else "未获取（降级系统接口，电流可能为 0）"}"
+            "当前 root 状态：${if (RootHelper.isAvailable()) "已获取 ✓（内核节点直读）" else "未获取（降级系统接口，电流可能为 0）"}\n\n" +
+            "悬浮窗读数为 0？点下方按钮跑数据诊断，把结果截图发我"
+
+        binding.btnDiagnostic.setOnClickListener {
+            startActivity(Intent(this, DiagnosticActivity::class.java))
+        }
     }
 
     /** 颜色选择器：色块数组，点击选中 */

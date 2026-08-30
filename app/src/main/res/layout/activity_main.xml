@@ -237,9 +237,16 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:layout_marginBottom="30dp"
             android:textSize="12sp"
             android:textColor="#666666" />
+
+        <Button
+            android:id="@+id/btn_diagnostic"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="30dp"
+            android:text="数据诊断（电池节点探测）" />
 
     </LinearLayout>
 </ScrollView>
