@@ -59,6 +59,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // 位置锁定开关（防误拖）
+        binding.swOverlayLock.isChecked = SettingsStore.overlayLocked
+        binding.swOverlayLock.setOnCheckedChangeListener { _, b ->
+            SettingsStore.overlayLocked = b
+            Toast.makeText(
+                this,
+                if (b) "位置已锁定，拖动悬浮窗将无效" else "已解锁，可拖动悬浮窗",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
         // ---------- 刷新频率 ----------
         val freqs = arrayOf("0.5 秒", "1 秒", "2 秒")
         binding.spinnerRefresh.adapter =

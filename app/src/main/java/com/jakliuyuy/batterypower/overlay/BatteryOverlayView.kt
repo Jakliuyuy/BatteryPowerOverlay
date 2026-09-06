@@ -115,6 +115,8 @@ class BatteryOverlayView(context: Context) : TextView(context) {
     }
 
     private fun onTouch(v: View, e: MotionEvent): Boolean {
+        // 锁定状态：不响应任何拖动（位置固定），解锁需回 App 关闭锁定
+        if (SettingsStore.overlayLocked) return false
         when (e.action) {
             MotionEvent.ACTION_DOWN -> {
                 downX = e.rawX

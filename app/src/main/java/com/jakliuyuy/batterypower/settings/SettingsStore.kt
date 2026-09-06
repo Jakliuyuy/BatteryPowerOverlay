@@ -26,6 +26,11 @@ object SettingsStore {
         get() = sp(AppContext.get()).getInt("overlay_y", -1)
         set(v) { sp(AppContext.get()).edit().putInt("overlay_y", v).commit() }
 
+    // 悬浮窗位置锁定（防误触拖动）
+    var overlayLocked: Boolean
+        get() = sp(AppContext.get()).getBoolean("overlay_locked", false)
+        set(v) = sp(AppContext.get()).edit().putBoolean("overlay_locked", v).apply()
+
     // 显示项
     var showPower: Boolean
         get() = sp(AppContext.get()).getBoolean("show_power", true)
