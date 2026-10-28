@@ -12,3 +12,4 @@ captures/
 app/release/
 .keystore_env
 apk-out/
+.kotlin/

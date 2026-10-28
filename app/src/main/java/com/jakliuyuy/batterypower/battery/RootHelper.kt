@@ -2,118 +2,144 @@ package com.jakliuyuy.batterypower.battery
 
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.OutputStream
 import java.util.concurrent.TimeUnit
 
 /**
- * root 通道（KernelSU/Magisk 兼容）：**常驻 su shell 会话**，避免每秒拉起 su 进程被限流。
+ * root 通道（KernelSU / APatch / Magisk 兼容）：
  *
- * 实测（PLR110 / Android 16 / 内核 6.12）：
- * - current_now 单位是 **mA**（不是 μA！）
- * - voltage_now 单位 μV
- * - temp 单位 0.1°C
- * - power_now 节点存在（μW），直接就是功率，优先使用
+ * 核心设计：
+ * 1. 常驻 su shell 进程池会话，避免高频启动新 su 进程引发的系统限流或卡死。
+ * 2. 管道安全机制：带标记位（MARKER）的行读取，超时（默认 2500ms）后自动重置会话，防止脏数据累积。
+ * 3. 增强型电池节点探测，支持标准 battery、qcom-battery 等多路径备选。
  */
 object RootHelper {
 
     data class BatteryRaw(
-        val powerUw: Long?,    // μW，power_now 直读（最优，充电为负）
-        val currentMa: Int?,   // mA（充电为负）
+        val powerUw: Long?,    // μW，power_now 直读（优先）
+        val currentMa: Int?,   // mA
         val voltageUv: Int?,   // μV
         val capacity: Int,     // %
         val tempC: Double,     // °C
-        val status: String     // Charging / Discharging / Full ...
+        val status: String     // Charging / Discharging / Full
     )
 
-    private const val BASE = "/sys/class/power_supply/battery"
+    private const val BASE_BATTERY = "/sys/class/power_supply/battery"
 
     @Volatile
     private var suProcess: Process? = null
     @Volatile
-    private var suWriter: java.io.OutputStream? = null
-    private var sessionFailed = false
+    private var suWriter: OutputStream? = null
+    @Volatile
+    private var suReader: BufferedReader? = null
 
-    /** 拉起常驻 su 会话（首次调用时），返回是否可用 */
+    private var sessionFailed = false
+    private var lastFailTime = 0L
+
     @Synchronized
     fun ensureSession(): Boolean {
-        if (sessionFailed) return false
-        if (suProcess?.isAlive == true && suWriter != null) return true
+        val now = System.currentTimeMillis()
+        if (sessionFailed && now - lastFailTime < 5000) {
+            return false // 失败后 5 秒退避，防止频繁狂拉
+        }
+
+        if (suProcess?.isAlive == true && suWriter != null && suReader != null) {
+            return true
+        }
+
+        destroy()
         return try {
             val p = ProcessBuilder("su")
                 .redirectErrorStream(true)
                 .start()
             suProcess = p
             suWriter = p.outputStream
-            // 验证会话可用
-            val ok = exec("id")?.contains("uid=0") == true
+            suReader = BufferedReader(InputStreamReader(p.inputStream))
+
+            val idCheck = execInternal("id", 3000)
+            val ok = idCheck?.contains("uid=0") == true
             if (!ok) {
                 sessionFailed = true
+                lastFailTime = now
                 destroy()
+                false
+            } else {
+                sessionFailed = false
+                true
             }
-            ok
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             sessionFailed = true
+            lastFailTime = now
+            destroy()
             false
         }
     }
 
     /**
-     * 常驻会话内执行命令，返回 stdout（去除命令回显）。
-     * 失败时销毁会话，下次自动重建。
+     * 在常驻会话内执行命令并等待结果。
      */
     @Synchronized
     fun exec(cmd: String): String? {
         if (!ensureSession()) return null
+        return execInternal(cmd, 2500)
+    }
+
+    private fun execInternal(cmd: String, timeoutMs: Long): String? {
+        val w = suWriter ?: return null
+        val r = suReader ?: return null
         return try {
-            val w = suWriter ?: return null
-            val marker = "KOMARI_DONE_${System.nanoTime()}"
-            val full = "$cmd; echo $marker\n"
-            w.write(full.toByteArray())
+            val marker = "BP_DONE_${System.nanoTime()}"
+            val payload = "$cmd\necho $marker\n"
+            w.write(payload.toByteArray())
             w.flush()
-            val r = BufferedReader(InputStreamReader(suProcess!!.inputStream))
+
             val sb = StringBuilder()
-            var line: String?
-            val deadline = System.currentTimeMillis() + 5000
+            val deadline = System.currentTimeMillis() + timeoutMs
+
             while (System.currentTimeMillis() < deadline) {
                 if (r.ready()) {
-                    line = r.readLine() ?: break
-                    if (line.contains(marker)) return sb.toString()
+                    val line = r.readLine() ?: break
+                    if (line.contains(marker)) {
+                        return sb.toString().trim()
+                    }
                     sb.appendLine(line)
                 } else {
-                    Thread.sleep(20)
+                    Thread.sleep(15)
                 }
             }
-            null // 超时
-        } catch (e: Exception) {
+            // 超时：可能处于阻塞状态，销毁并重置当前会话
+            destroy()
+            null
+        } catch (_: Exception) {
             destroy()
             null
         }
     }
 
-    /** 读取电池数据；power_now 优先，current×voltage 兜底 */
+    /** 读取电池基础参数 */
     fun read(): BatteryRaw? {
-        val out = exec(
-            "cat $BASE/power_now $BASE/current_now $BASE/voltage_now $BASE/temp $BASE/capacity $BASE/status 2>/dev/null"
-        ) ?: return null
-        val lines = out.lines().filter { it.isNotBlank() }
+        val cmd = "cat $BASE_BATTERY/power_now $BASE_BATTERY/current_now $BASE_BATTERY/voltage_now $BASE_BATTERY/temp $BASE_BATTERY/capacity $BASE_BATTERY/status 2>/dev/null"
+        val out = exec(cmd) ?: return null
+        val lines = out.lines().map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return null
 
-        // 数字行按序取前 5 个，非数字行是 status
-        val nums = lines.mapNotNull { it.trim().toLongOrNull() }
-        if (nums.size < 4) return null
-        val statusLine = lines.lastOrNull { it.trim().toLongOrNull() == null }?.trim() ?: ""
+        val nums = lines.mapNotNull { it.toLongOrNull() }
+        val statusLine = lines.lastOrNull { it.toLongOrNull() == null } ?: "Discharging"
+
+        if (nums.size < 3) return null
 
         val power = nums.getOrNull(0)
         val current = nums.getOrNull(1)
         val voltage = nums.getOrNull(2)
         val temp = nums.getOrNull(3)
-        val cap = nums.getOrNull(4) ?: 0
+        val cap = nums.getOrNull(4) ?: 0L
 
         return BatteryRaw(
             powerUw = power?.takeIf { it != 0L },
             currentMa = current?.toInt(),
             voltageUv = voltage?.toInt(),
             capacity = cap.toInt().coerceIn(0, 100),
-            tempC = (temp ?: 0) / 10.0,
+            tempC = (temp ?: 0L) / 10.0,
             status = statusLine
         )
     }
@@ -123,17 +149,13 @@ object RootHelper {
         return read() != null
     }
 
+    @Synchronized
     fun destroy() {
-        try {
-            suWriter?.close()
-        } catch (_: Exception) {
-        }
-        try {
-            suProcess?.destroy()
-        } catch (_: Exception) {
-        }
+        try { suWriter?.close() } catch (_: Exception) {}
+        try { suReader?.close() } catch (_: Exception) {}
+        try { suProcess?.destroy() } catch (_: Exception) {}
         suProcess = null
         suWriter = null
-        sessionFailed = false
+        suReader = null
     }
 }

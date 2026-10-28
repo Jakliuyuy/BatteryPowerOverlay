@@ -8,6 +8,7 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.TextView
 import de.robv.android.xposed.XC_MethodHook
@@ -15,12 +16,15 @@ import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
 
 /**
- * Hook SystemUI 状态栏，注入电池功率 TextView（Scene 迷你监视器风格）。
+ * Hook SystemUI 状态栏，注入电池功率 TextView。
  *
- * - 时钟类兼容：ColorOS(oplus) / AOSP 双类名探测
- * - 配置：ConfigBridge（ContentProvider IPC + 磁盘缓存）实时拉取
- * - 优先级：注入到**状态栏根容器**并抬高 elevation，功率显示在**所有通知图标之上**，
- *   通知再多也不会覆盖功率；默认位置在时钟左侧（不盖时钟），可 x/y 偏移微调
+ * 彻底解决开机重启后位置丢失的四大机制：
+ * 1. 测绘就绪保护（OnGlobalLayoutListener）：在时钟与根容器未完成 measure/layout（宽度为0）前挂起等待，
+ *    杜绝开机瞬间计算出 0 边距导致文字贴在屏幕极右侧。
+ * 2. 动态双向锚点算法：自动识别时钟物理方位（左侧挖孔屏 / 右侧原生屏），根据用户设定的锚点
+ *    （时钟左侧/右侧/状态栏左右端）自适应匹配 Gravity.START 或 Gravity.END，杜绝反推 900+ 像素边距导致的开机偏移。
+ * 3. 垂直与微调位移采用 translationY/translationX 双保险，抗系统重排重绘干扰。
+ * 4. 注册 ContentObserver 实时监听，主应用调参即刻生效；开机 1s/3s 延迟校验，平稳度过系统冷启阶段。
  */
 object SystemUIHook {
 
@@ -36,14 +40,15 @@ object SystemUIHook {
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
         val clockClass = CANDIDATES.firstNotNullOfOrNull {
             runCatching { XposedHelpers.findClass(it, lpparam.classLoader) }.getOrNull()
-        } ?: return  // 三个候选都没找到，ColorOS 类名变更，需要远程日志定位
+        } ?: return
 
         XposedHelpers.findAndHookMethod(
             clockClass,
             "onAttachedToWindow",
             object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
-                    inject(param.thisObject as View)
+                    val clock = param.thisObject as? View ?: return
+                    inject(clock)
                 }
             }
         )
@@ -51,48 +56,72 @@ object SystemUIHook {
 
     private fun inject(clock: View) {
         val parent = clock.parent as? ViewGroup ?: return
-        // 状态栏根容器（FrameLayout，支持 gravity + elevation 层级）
         val root = findStatusBarRoot(parent) ?: parent
         if (root !is FrameLayout) {
-            // 兜底：挂到时钟父容器（旧方案，无覆盖优先级）
             attachLegacy(clock, parent)
             return
         }
-        if (root.findViewWithTag<View>(POWER_TAG) != null) return
+
+        // 避免重复注入
+        val existingView = root.findViewWithTag<TextView>(POWER_TAG)
+        if (existingView != null) {
+            return
+        }
 
         val ctx = clock.context
         val tv = TextView(ctx).apply {
             tag = POWER_TAG
             gravity = Gravity.CENTER_VERTICAL
             includeFontPadding = false
+            elevation = ELEVATION
+            translationZ = ELEVATION
             text = "--"
         }
+
         val lp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.END or Gravity.CENTER_VERTICAL
+            FrameLayout.LayoutParams.WRAP_CONTENT
         )
         tv.layoutParams = lp
-        tv.elevation = ELEVATION
-        tv.translationZ = ELEVATION
         root.addView(tv)
 
-        // 刷新循环（频率可配置 0.5s~5s）
+        // 测绘就绪监听：必须等待时钟和根容器测量完毕（width > 0）才计算初始绝对位置
+        val layoutListener = object : ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                if (clock.width > 0 && root.width > 0) {
+                    val cfg = ConfigBridge.query(ctx)
+                    applyPositionAndStyle(tv, clock, root, cfg)
+                }
+            }
+        }
+        clock.viewTreeObserver.addOnGlobalLayoutListener(layoutListener)
+
+        // 注册 ContentObserver 实时刷新配置（主 app 改配置毫秒级生效）
+        ConfigBridge.ensureObserver(ctx) { freshCfg ->
+            applyPositionAndStyle(tv, clock, root, freshCfg)
+            tv.text = readPower(ctx, freshCfg)
+        }
+
+        // 启动主轮询刷新循环
         val handler = Handler(Looper.getMainLooper())
-        val runnable = object : Runnable {
+        val refreshRunnable = object : Runnable {
             override fun run() {
                 if (!tv.isAttachedToWindow) return
                 val cfg = ConfigBridge.query(ctx)
-                applyConfig(tv, clock, root, cfg)
+                applyPositionAndStyle(tv, clock, root, cfg)
                 tv.text = readPower(ctx, cfg)
                 val refreshMs = ConfigBridge.longOf(cfg, "hook_refresh_ms", 1000L).coerceIn(500, 5000)
                 handler.postDelayed(this, refreshMs)
             }
         }
-        tv.post(runnable)
+        tv.post(refreshRunnable)
+
+        // 开机平稳度过：系统启动 1 秒和 3 秒后分别再次校对，确保系统通知栏与图标完全排版稳定
+        handler.postDelayed({ if (tv.isAttachedToWindow) applyPositionAndStyle(tv, clock, root, ConfigBridge.query(ctx)) }, 1200)
+        handler.postDelayed({ if (tv.isAttachedToWindow) applyPositionAndStyle(tv, clock, root, ConfigBridge.query(ctx)) }, 3200)
     }
 
-    /** 兜底方案：插入时钟父容器（无 Z 序提升） */
+    /** 降级方案：插入时钟父容器 */
     private fun attachLegacy(clock: View, parent: ViewGroup) {
         if (parent.findViewWithTag<View>(POWER_TAG) != null) return
         val ctx = clock.context
@@ -120,49 +149,101 @@ object SystemUIHook {
         tv.post(runnable)
     }
 
-    /** 位置（margin 控制，默认时钟左侧）+ 颜色/字号/显示开关 实时应用 */
-    private fun applyConfig(tv: TextView, clock: View, root: FrameLayout, cfg: Map<String, String>) {
+    /**
+     * 位置计算核心：动态识别时钟方向，应用相对锚点与偏移，彻底根治开机位置丢失。
+     */
+    private fun applyPositionAndStyle(
+        tv: TextView,
+        clock: View,
+        root: FrameLayout,
+        cfg: Map<String, String>
+    ) {
         val ctx = tv.context
 
-        // 显示开关
+        // 1. 显示开关
         val enabled = ConfigBridge.boolOf(cfg, "hook_enabled", true)
         tv.visibility = if (enabled) View.VISIBLE else View.GONE
         if (!enabled) return
 
-        // 颜色/字号
+        // 2. 颜色与字号
         tv.textSize = ConfigBridge.floatOf(cfg, "hook_text_size", 11f)
-        tv.setTextColor(ConfigBridge.intOf(cfg, "hook_text_color", Color.WHITE))
+        val customColor = ConfigBridge.intOf(cfg, "hook_text_color", Color.WHITE)
+        val adaptColor = ConfigBridge.boolOf(cfg, "hook_adapt_color", false)
+        if (adaptColor && clock is TextView) {
+            tv.setTextColor(clock.currentTextColor)
+        } else {
+            tv.setTextColor(customColor)
+        }
 
-        // 位置：以时钟为锚点
-        val side = ConfigBridge.intOf(cfg, "hook_side", 0)  // 0=时钟右侧 1=时钟左侧
-        val ox = ConfigBridge.intOf(cfg, "hook_offset_x", 0)
-        val oy = ConfigBridge.intOf(cfg, "hook_offset_y", 0)
+        // 3. 测量数据保护：根容器或时钟未测绘完成时暂不改动 layoutParams，防止被清零
+        if (root.width <= 0 || clock.width <= 0) {
+            return
+        }
 
-        val lp = tv.layoutParams as? FrameLayout.LayoutParams ?: return
-        lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
-
-        // 用屏幕坐标计算锚点（clock 与 root 坐标系不同，不能直接用 right）
+        // 4. 计算屏幕真实绝对坐标
         val rootLoc = IntArray(2)
         val clockLoc = IntArray(2)
         root.getLocationOnScreen(rootLoc)
         clock.getLocationOnScreen(clockLoc)
-        val rootRightScreen = rootLoc[0] + root.width - root.paddingRight
-        val clockLeftScreen = clockLoc[0]
-        val clockRightScreen = clockLoc[0] + clock.width
 
-        val marginEnd = if (side == 1) {
-            // 时钟左侧：右边缘 = 时钟左边缘 - 间距 - 偏移
-            (rootRightScreen - clockLeftScreen + dp(ctx, 4) - ox).coerceAtLeast(0)
-        } else {
-            // 时钟右侧：贴着时钟右边缘（时钟通常在状态栏最右）
-            (rootRightScreen - clockRightScreen + dp(ctx, 4) - ox).coerceAtLeast(0)
+        val rootWidth = root.width
+        val clockRelativeX = clockLoc[0] - rootLoc[0] // 时钟相对于 root 的 X 坐标
+        val isClockOnLeftSide = clockRelativeX < (rootWidth / 2) // 时钟是否在左半边（全面屏挖孔屏主流）
+
+        val side = ConfigBridge.intOf(cfg, "hook_side", 0) // 0=时钟右侧, 1=时钟左侧, 2=状态栏最右, 3=状态栏最左
+        val ox = ConfigBridge.intOf(cfg, "hook_offset_x", 0)
+        val oy = ConfigBridge.intOf(cfg, "hook_offset_y", 0)
+
+        val lp = tv.layoutParams as? FrameLayout.LayoutParams ?: return
+
+        // 垂直偏移统一使用 translationY，平滑且不破坏原有重力排列
+        tv.translationY = oy.toFloat()
+
+        when (side) {
+            1 -> { // 锚点：时钟左侧
+                if (isClockOnLeftSide) {
+                    lp.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    val targetLeft = (clockRelativeX - tv.width - dp(ctx, 4) + ox).coerceAtLeast(0)
+                    lp.leftMargin = targetLeft
+                    lp.rightMargin = 0
+                } else {
+                    lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                    val clockRightDist = rootWidth - (clockRelativeX + clock.width)
+                    val targetRight = (clockRightDist + clock.width + dp(ctx, 4) - ox).coerceAtLeast(0)
+                    lp.rightMargin = targetRight
+                    lp.leftMargin = 0
+                }
+            }
+            2 -> { // 锚点：状态栏最右侧
+                lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                lp.rightMargin = (dp(ctx, 8) - ox).coerceAtLeast(0)
+                lp.leftMargin = 0
+            }
+            3 -> { // 锚点：状态栏最左侧
+                lp.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                lp.leftMargin = (dp(ctx, 8) + ox).coerceAtLeast(0)
+                lp.rightMargin = 0
+            }
+            else -> { // 0：时钟右侧（默认）
+                if (isClockOnLeftSide) {
+                    lp.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    val targetLeft = (clockRelativeX + clock.width + dp(ctx, 4) + ox).coerceAtLeast(0)
+                    lp.leftMargin = targetLeft
+                    lp.rightMargin = 0
+                } else {
+                    lp.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                    val clockRightDist = rootWidth - (clockRelativeX + clock.width)
+                    val targetRight = (clockRightDist - tv.width - dp(ctx, 4) - ox).coerceAtLeast(0)
+                    lp.rightMargin = targetRight
+                    lp.leftMargin = 0
+                }
+            }
         }
-        lp.marginEnd = marginEnd
-        lp.topMargin = oy
+
         runCatching { tv.layoutParams = lp }
     }
 
-    /** 状态栏根容器（向上找到最外层 FrameLayout） */
+    /** 状态栏根容器（向上查找顶层 FrameLayout） */
     private fun findStatusBarRoot(v: ViewGroup): FrameLayout? {
         var cur: ViewGroup? = v
         var lastFrame: FrameLayout? = null
@@ -174,7 +255,7 @@ object SystemUIHook {
         return lastFrame
     }
 
-    /** SystemUI 进程内用系统权限读 BatteryManager，无需 root */
+    /** SystemUI 进程内使用系统签名权限读取 BatteryManager 与广播 */
     private fun readPower(ctx: Context, cfg: Map<String, String>): String {
         return try {
             val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
@@ -192,18 +273,22 @@ object SystemUIHook {
 
             val parts = mutableListOf<String>()
             if (ConfigBridge.boolOf(cfg, "hook_show_power", true)) {
-                parts.add(if (unit) {
-                    if (w >= 10) String.format("%.1fW", w) else String.format("%.2fW", w)
-                } else {
-                    if (w >= 10) String.format("%.1f", w) else String.format("%.2f", w)
-                })
+                parts.add(
+                    if (unit) {
+                        if (kotlin.math.abs(w) >= 10) String.format("%.1fW", w) else String.format("%.2fW", w)
+                    } else {
+                        if (kotlin.math.abs(w) >= 10) String.format("%.1f", w) else String.format("%.2f", w)
+                    }
+                )
             }
             if (ConfigBridge.boolOf(cfg, "hook_show_current", false)) {
-                parts.add(if (unit) {
-                    if (kotlin.math.abs(ma) >= 1000) String.format("%.2fA", ma / 1000.0) else "${ma}mA"
-                } else {
-                    if (kotlin.math.abs(ma) >= 1000) String.format("%.2f", ma / 1000.0) else "$ma"
-                })
+                parts.add(
+                    if (unit) {
+                        if (kotlin.math.abs(ma) >= 1000) String.format("%.2fA", ma / 1000.0) else "${ma}mA"
+                    } else {
+                        if (kotlin.math.abs(ma) >= 1000) String.format("%.2f", ma / 1000.0) else "$ma"
+                    }
+                )
             }
             if (ConfigBridge.boolOf(cfg, "hook_show_voltage", false)) {
                 parts.add(if (unit) String.format("%.2fV", mv / 1000.0) else String.format("%.2f", mv / 1000.0))
@@ -215,7 +300,7 @@ object SystemUIHook {
                 parts.add(if (unit) "$cap%" else "$cap")
             }
             if (parts.isEmpty()) "--" else parts.joinToString(" ")
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             "--W"
         }
     }

@@ -1,27 +1,63 @@
-# BatteryPowerOverlay — 电池功率悬浮窗
+# BatteryPowerOverlay — 电池功率悬浮窗 (现代化重构版)
 
-一加 Ace 6T (ColorOS, root) 实时电池功率显示，双模式，Scene 迷你监视器风格。
+Android 实时电池动力监视工具，支持**全功能桌面悬浮窗**与 **LSPosed 状态栏原生内嵌 Hook** 双模式，专为 root/玩机极客打造。
 
-## 模式一：全透明悬浮窗
-- 全透明无背景，`TYPE_APPLICATION_OVERLAY` 悬浮窗
-- 显示项可勾选：功率 W / 电流 mA / 电压 V / 温度 °C / 电量 %
-- 可拖动、位置记忆、文字颜色 8 色可选、字体大小可调、刷新频率可调
-- root 读 `/sys/class/power_supply/battery/*`（含温度），免 root 自动降级 BatteryManager
+---
 
-## 模式二：状态栏 Hook（LSPosed）
-- hook SystemUI Clock 注入显示（兼容 ColorOS `com.oplus...` 与 AOSP 双类名）
-- 显示位置：时钟左侧 / 右侧
-- 显示项、文字颜色、字号全部可自定义
-- 配置修改 1 秒内实时生效（XSharedPreferences 跨进程热读，无需重启 SystemUI）
-- 代码运行在 SystemUI 进程，系统权限直读 BatteryManager
+## ✨ 核心特性
 
-## 构建
+### 1. 实时动力看板 (Live Dashboard)
+- **Material 3 / Material You** 现代化视觉重构，支持动态取色与沉浸式卡片布局；
+- 实时显示超大动态充放电功率（充电高亮脉冲、放电科技配色）；
+- 毫秒级展示实时电流 (mA)、电池电压 (V)、剩余电量 (%)、电池温度 (°C) 与供电通道状态；
+- 自动智能驱动：优先内核节点直读（Root），无 root 自动平稳降级为系统 BatteryManager 接口。
+
+### 2. 桌面全功能悬浮窗
+- **胶囊背景风格切换**：
+  - 极简全透明（无边框，极简沉浸）
+  - 磨砂黑胶囊（细腻圆角，现代卡片质感）
+  - 半透毛玻璃（柔和朦胧背景）
+  - 细线描边（科技极客风格）
+- **屏幕防越界与自由拖动**：手势随意拖动，拖动松手即刻通过 `commit()` 同步落盘，永久记忆坐标；
+- **支持一键居中复位与位置锁定**，防止日常误触移位；
+- **支持边缘吸附与折叠**；
+- 字体大小、文字颜色（内置预设 Palette + HSV 360° 无极调色板）、刷新频率（0.5s / 1s / 2s）全面可控。
+
+### 3. 状态栏 Hook 原生内嵌 (LSPosed 模块)
+- **彻底根治开机位置丢失**：
+  - 全面支持 **Direct Boot**（设备保护存储 `createDeviceProtectedStorageContext`），手机刚开机、屏幕尚未解锁阶段即可 100% 恢复记忆位置与样式；
+  - 引入 **测绘就绪保护** (`OnGlobalLayoutListener`)，杜绝开机初期时钟尺寸未就绪算出的 0 边距错误；
+  - **动态双向锚点系统**：自动识别左侧打孔屏时钟或右侧原生时钟，支持【时钟右侧】、【时钟左侧】、【状态栏最右端】、【状态栏最左端】四种基准；
+  - 水平 (±500px) 与垂直 (±200px) 像素级滑块微调，带 10px / 5px 步进按钮与一键归零；
+- **零延迟即时热重载**：引入 `ContentObserver`，在主应用修改配置毫秒级反映到状态栏，无需重启 SystemUI 或苦等轮询；
+- 文字颜色支持【跟随系统状态栏时钟颜色自适应】或【自定义极客配色】；
+- 内置【重启 SystemUI】一键提权快捷按钮。
+
+### 4. 高级与系统兼容
+- **开机自启动悬浮窗**：内置 `BootReceiver`，开机后自动拉起前台悬浮窗；
+- **双电芯闪充支持**：针对串联双电芯机型提供功率翻倍自适应开关；
+- **充放电极性校准**：针对特殊定制内核提供正负号翻转开关；
+- **底层电池节点诊断工具**：一键探测当前机型 `/sys/class/power_supply/` 节点路径并支持复制。
+
+---
+
+## 🛠️ 构建与编译
+
 ```bash
-./gradlew assembleRelease   # 本地构建（fallback debug 签名）
-```
-GitHub Actions 自动打包（push main / workflow_dispatch），Release 正式签名，产物在 artifact。
+# 本地构建 Debug APK
+./gradlew assembleDebug
 
-## 使用
-1. 安装 APK，授予悬浮窗权限
-2. 打开悬浮窗开关（root 弹窗授权）
-3. Hook 模式：LSPosed 启用模块 → 勾选 SystemUI → 重启 SystemUI 一次，之后配置实时生效
+# 本地构建 Release APK
+./gradlew assembleRelease
+```
+
+---
+
+## 🚀 安装与使用
+
+1. 安装生成的 APK，根据引导授予**悬浮窗权限**；
+2. 打开悬浮窗开关，在弹出的 Root 权限弹窗（KernelSU / APatch / Magisk）中允许授权；
+3. 如需使用状态栏内嵌模式：
+   - 在 LSPosed 管理器中启用本模块，作用域勾选 **SystemUI (系统界面)**；
+   - 点击 App 主界面的【重启 SystemUI】加载模块；
+   - 之后在 App 内任意修改位置、颜色、字号均实时热生效！

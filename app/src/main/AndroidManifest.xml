@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
+        android:name=".BatteryPowerApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -30,10 +31,11 @@
             android:name=".DiagnosticActivity"
             android:exported="false" />
 
-        <!-- 跨进程配置通道（hook 在 SystemUI 进程读取） -->
+        <!-- 跨进程配置通道（hook 在 SystemUI 进程读取，支持 Direct Boot 开机直读） -->
         <provider
             android:name=".config.ConfigProvider"
             android:authorities="com.jakliuyuy.batterypower.config"
+            android:directBootAware="true"
             android:exported="true" />
 
         <service
@@ -44,6 +46,18 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="battery_power_overlay" />
         </service>
+
+        <!-- 开机自启动接收器 -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:directBootAware="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <!-- LSPosed 模块声明 -->
         <meta-data

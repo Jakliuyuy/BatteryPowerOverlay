@@ -2,12 +2,13 @@ package com.jakliuyuy.batterypower.battery
 
 import android.content.Context
 import android.os.BatteryManager
+import com.jakliuyuy.batterypower.settings.SettingsStore
+import kotlin.math.abs
 
 /**
- * 统一电池数据源。
- *
- * root 路径（实测 PLR110）：power_now 直读（μW）→ 功率；current_now 单位 mA。
- * 降级路径：BatteryManager 电流（普通 app 可能为 0）+ sticky 广播电压/温度/电量。
+ * 统一电池数据采集引擎：
+ * 1. root 通道：内核 power_now / current_now 直读（高精度，支持极性智能校准与双电芯计算）
+ * 2. 系统降级通道：BatteryManager 接口 + ACTION_BATTERY_CHANGED 广播
  */
 object BatteryReader {
 
@@ -17,40 +18,60 @@ object BatteryReader {
         val voltageMv: Int,
         val level: Int,
         val tempC: Double,
-        val source: String  // "root" / "system" / "failed"
+        val status: String,     // "Charging", "Discharging", "Full"
+        val isCharging: Boolean,
+        val source: String      // "root" / "system" / "failed"
     ) {
-        fun powerText(): String = if (powerW >= 0) {
-            if (powerW >= 10) String.format("%.1fW", powerW) else String.format("%.2fW", powerW)
-        } else {
-            String.format("-%.2fW", -powerW)
+        fun powerText(): String {
+            val prefix = if (isCharging) "+" else "-"
+            val absW = abs(powerW)
+            val formatted = if (absW >= 10) String.format("%.1fW", absW) else String.format("%.2fW", absW)
+            return "$prefix$formatted"
         }
     }
 
-    private var lastRootOk = false
+    private var lastRootHealthy = false
 
     fun read(context: Context): Sample {
-        // 1) root：power_now 优先，current×voltage 兜底
+        val invert = SettingsStore.polarityInvert
+        val doubleCell = SettingsStore.doubleCellFix
+
+        // 1. 尝试通过 root 读取内核节点
         RootHelper.read()?.let { raw ->
-            lastRootOk = true
+            lastRootHealthy = true
             val voltageV = (raw.voltageUv ?: 0) / 1_000_000.0
-            val rawW = raw.powerUw?.let { it / 1_000_000.0 }
-                ?: (raw.currentMa ?: 0) / 1000.0 * voltageV
-            // 充电时节点值为负（电流流入电池），充电显示正功率
-            val charging = raw.status.contains("Charg", ignoreCase = true) ||
-                raw.status.contains("Full", ignoreCase = true)
-            val powerW = if (charging) kotlin.math.abs(rawW) else rawW
+            var rawW = raw.powerUw?.let { it / 1_000_000.0 }
+                ?: ((raw.currentMa ?: 0) / 1000.0 * voltageV)
+
+            if (doubleCell) {
+                rawW *= 2.0
+            }
+
+            var isCharging = raw.status.contains("Charg", ignoreCase = true) ||
+                    raw.status.contains("Full", ignoreCase = true)
+
+            if (invert) {
+                isCharging = !isCharging
+            }
+
+            val finalPowerW = if (isCharging) abs(rawW) else -abs(rawW)
+            val currentMa = raw.currentMa ?: 0
+
             return Sample(
-                powerW = powerW,
-                currentMa = raw.currentMa ?: 0,
+                powerW = finalPowerW,
+                currentMa = if (doubleCell) currentMa * 2 else currentMa,
                 voltageMv = (raw.voltageUv ?: 0) / 1000,
                 level = raw.capacity,
                 tempC = raw.tempC,
+                status = raw.status,
+                isCharging = isCharging,
                 source = "root"
             )
         }
-        lastRootOk = false
 
-        // 2) 降级 BatteryManager + sticky 广播
+        lastRootHealthy = false
+
+        // 2. 降级为系统 API 读取
         return try {
             val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
             val cur = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
@@ -61,19 +82,33 @@ object BatteryReader {
             val mv = bintent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
             val cap = bintent?.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) ?: 0
             val temp = bintent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
-            val ma = if (cur == Integer.MIN_VALUE) 0 else cur
+            val statusExtra = bintent?.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN) ?: 0
+
+            var isCharging = statusExtra == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    statusExtra == BatteryManager.BATTERY_STATUS_FULL
+
+            if (invert) {
+                isCharging = !isCharging
+            }
+
+            val ma = if (cur == Int.MIN_VALUE) 0 else cur
+            var calcW = abs(ma / 1000.0 * (mv / 1000.0))
+            if (doubleCell) calcW *= 2.0
+
             Sample(
-                powerW = ma / 1000.0 * (mv / 1000.0),
-                currentMa = ma,
+                powerW = if (isCharging) calcW else -calcW,
+                currentMa = if (doubleCell) ma * 2 else ma,
                 voltageMv = mv,
-                level = if (cap in 0..100) cap else 0,
+                level = cap.coerceIn(0, 100),
                 tempC = temp / 10.0,
+                status = if (isCharging) "Charging" else "Discharging",
+                isCharging = isCharging,
                 source = "system"
             )
-        } catch (e: Exception) {
-            Sample(0.0, 0, 0, 0, 0.0, "failed")
+        } catch (_: Exception) {
+            Sample(0.0, 0, 0, 0, 0.0, "Unknown", false, "failed")
         }
     }
 
-    fun rootHealthy(): Boolean = lastRootOk
+    fun isRootHealthy(): Boolean = lastRootHealthy
 }

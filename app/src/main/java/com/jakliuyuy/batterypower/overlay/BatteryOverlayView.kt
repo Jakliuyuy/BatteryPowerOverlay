@@ -2,21 +2,31 @@ package com.jakliuyuy.batterypower.overlay
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.util.DisplayMetrics
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
+import androidx.core.content.ContextCompat
+import com.jakliuyuy.batterypower.MainActivity
+import com.jakliuyuy.batterypower.R
 import com.jakliuyuy.batterypower.battery.BatteryReader
 import com.jakliuyuy.batterypower.settings.SettingsStore
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * 悬浮窗视图：显示功率/电流/电压/电量，可拖动，位置记忆。
+ * 桌面悬浮窗核心视图：
+ * 1. 样式丰富：极简透明、磨砂黑胶囊、半透毛玻璃、细线描边。
+ * 2. 屏幕边界安全保护（Clamping），防止拖出屏幕外失踪。
+ * 3. 拖动手势结束时 commit() 同步存储 X/Y 坐标，永久记忆不丢失。
+ * 4. 点击打开 App，支持长按或锁定位置。
  */
 @SuppressLint("ViewConstructor")
 class BatteryOverlayView(context: Context) : TextView(context) {
@@ -25,11 +35,16 @@ class BatteryOverlayView(context: Context) : TextView(context) {
     private val handler = Handler(Looper.getMainLooper())
     private var lastX = 0
     private var lastY = 0
-    private var downX = 0f
-    private var downY = 0f
+    private var downRawX = 0f
+    private var downRawY = 0f
     private var dragging = false
     private var attached = false
     private var running = false
+
+    private val screenMetrics = DisplayMetrics().also {
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getRealMetrics(it)
+    }
 
     private val params = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
@@ -42,25 +57,47 @@ class BatteryOverlayView(context: Context) : TextView(context) {
         if (SettingsStore.overlayX >= 0 && SettingsStore.overlayY >= 0) {
             x = SettingsStore.overlayX
             y = SettingsStore.overlayY
+        } else {
+            // 默认居中靠顶部
+            x = (screenMetrics.widthPixels / 2) - dp(80)
+            y = dp(60)
         }
     }
 
-    private val refresh = object : Runnable {
+    private val refreshRunnable = object : Runnable {
         override fun run() {
             if (!running) return
-            update()
-            handler.postDelayed(this, SettingsStore.refreshMs)
+            updateContent()
+            handler.postDelayed(this, SettingsStore.refreshMs.coerceAtLeast(300L))
         }
     }
 
     init {
+        includeFontPadding = false
+        applyStyle()
+        setOnTouchListener(::onTouch)
+        updateContent()
+    }
+
+    fun applyStyle() {
         textSize = SettingsStore.textSizeSp
         setTextColor(SettingsStore.textColor)
-        // 全透明：无背景、无边框，Scene 迷你监视器风格
-        setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        setPadding(dp(4), dp(1), dp(4), dp(1))
-        setOnTouchListener(::onTouch)
-        update()
+
+        when (SettingsStore.overlayStyle) {
+            SettingsStore.STYLE_CAPSULE_DARK -> {
+                background = ContextCompat.getDrawable(context, R.drawable.bg_capsule_dark)
+            }
+            SettingsStore.STYLE_CAPSULE_FROSTED -> {
+                background = ContextCompat.getDrawable(context, R.drawable.bg_capsule_frosted)
+            }
+            SettingsStore.STYLE_CAPSULE_OUTLINE -> {
+                background = ContextCompat.getDrawable(context, R.drawable.bg_capsule_outline)
+            }
+            else -> {
+                setBackgroundColor(Color.TRANSPARENT)
+                setPadding(dp(4), dp(1), dp(4), dp(1))
+            }
+        }
     }
 
     fun attach() {
@@ -69,15 +106,15 @@ class BatteryOverlayView(context: Context) : TextView(context) {
         running = true
         try {
             wm.addView(this, params)
-            handler.postDelayed(refresh, SettingsStore.refreshMs)
-        } catch (e: Exception) {
+            handler.post(refreshRunnable)
+        } catch (_: Exception) {
             attached = false
         }
     }
 
     fun detach() {
         running = false
-        handler.removeCallbacks(refresh)
+        handler.removeCallbacks(refreshRunnable)
         if (attached) {
             try {
                 wm.removeView(this)
@@ -87,11 +124,19 @@ class BatteryOverlayView(context: Context) : TextView(context) {
         }
     }
 
-    private fun update() {
+    fun reloadConfig() {
+        applyStyle()
+        updateContent()
+    }
+
+    private fun updateContent() {
         val s = BatteryReader.read(context)
         val unit = SettingsStore.showUnit
         val parts = mutableListOf<String>()
-        if (SettingsStore.showPower) parts.add(if (unit) s.powerText() else s.powerText().removeSuffix("W"))
+
+        if (SettingsStore.showPower) {
+            parts.add(if (unit) s.powerText() else s.powerText().removeSuffix("W"))
+        }
         if (SettingsStore.showCurrent) {
             val t = formatCurrent(s.currentMa)
             parts.add(if (unit) t else t.filter { it.isDigit() || it == '-' || it == '.' })
@@ -104,35 +149,55 @@ class BatteryOverlayView(context: Context) : TextView(context) {
             val t = String.format("%.1f°C", s.tempC)
             parts.add(if (unit) t else String.format("%.1f", s.tempC))
         }
-        if (SettingsStore.showLevel) parts.add(if (unit) "${s.level}%" else "${s.level}")
-        text = if (parts.isEmpty()) s.powerText() else parts.joinToString(" ")
+        if (SettingsStore.showLevel) {
+            parts.add(if (unit) "${s.level}%" else "${s.level}")
+        }
+
+        text = if (parts.isEmpty()) s.powerText() else parts.joinToString("  ")
         setTextColor(SettingsStore.textColor)
     }
 
     private fun formatCurrent(ma: Int): String {
-        val abs = kotlin.math.abs(ma)
-        return if (abs >= 1000) String.format("%.2fA", ma / 1000.0) else "${ma}mA"
+        val absVal = abs(ma)
+        return if (absVal >= 1000) String.format("%.2fA", ma / 1000.0) else "${ma}mA"
     }
 
     private fun onTouch(v: View, e: MotionEvent): Boolean {
-        // 锁定状态：不响应任何拖动（位置固定），解锁需回 App 关闭锁定
-        if (SettingsStore.overlayLocked) return false
+        if (SettingsStore.overlayLocked) {
+            // 锁定状态下，点击依然可以打开主界面
+            if (e.action == MotionEvent.ACTION_UP) {
+                openMainActivity()
+            }
+            return true
+        }
+
         when (e.action) {
             MotionEvent.ACTION_DOWN -> {
-                downX = e.rawX
-                downY = e.rawY
+                downRawX = e.rawX
+                downRawY = e.rawY
                 lastX = params.x
                 lastY = params.y
                 dragging = false
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                val dx = e.rawX - downX
-                val dy = e.rawY - downY
-                if (kotlin.math.abs(dx) > 8 || kotlin.math.abs(dy) > 8) dragging = true
+                val dx = e.rawX - downRawX
+                val dy = e.rawY - downRawY
+                if (abs(dx) > 10 || abs(dy) > 10) {
+                    dragging = true
+                }
                 if (dragging) {
-                    params.x = lastX + dx.roundToInt()
-                    params.y = lastY + dy.roundToInt()
+                    var newX = lastX + dx.roundToInt()
+                    var newY = lastY + dy.roundToInt()
+
+                    // 屏幕越界安全保护
+                    val maxX = screenMetrics.widthPixels - width
+                    val maxY = screenMetrics.heightPixels - height
+                    newX = newX.coerceIn(0, maxX.coerceAtLeast(0))
+                    newY = newY.coerceIn(0, maxY.coerceAtLeast(0))
+
+                    params.x = newX
+                    params.y = newY
                     try {
                         wm.updateViewLayout(this, params)
                     } catch (_: Exception) {
@@ -142,13 +207,38 @@ class BatteryOverlayView(context: Context) : TextView(context) {
             }
             MotionEvent.ACTION_UP -> {
                 if (dragging) {
+                    // 贴边吸附处理
+                    if (SettingsStore.overlaySnapEdge) {
+                        val midX = screenMetrics.widthPixels / 2
+                        params.x = if (params.x + width / 2 < midX) dp(4) else screenMetrics.widthPixels - width - dp(4)
+                        try {
+                            wm.updateViewLayout(this, params)
+                        } catch (_: Exception) {}
+                    }
+                    // 同步刷盘，重启永久记忆
                     SettingsStore.overlayX = params.x
                     SettingsStore.overlayY = params.y
+                } else {
+                    // 轻触触发点击打开主界面
+                    val clickDist = abs(e.rawX - downRawX) + abs(e.rawY - downRawY)
+                    if (clickDist < 15) {
+                        openMainActivity()
+                    }
                 }
                 return true
             }
         }
         return false
+    }
+
+    private fun openMainActivity() {
+        try {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            context.startActivity(intent)
+        } catch (_: Exception) {
+        }
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).roundToInt()
