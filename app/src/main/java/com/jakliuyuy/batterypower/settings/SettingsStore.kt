@@ -189,6 +189,14 @@ object SettingsStore {
             notifyHookUpdate()
         }
 
+    // 状态栏专属单位显示开关（关闭后隐藏 W / mA / V 等字母）
+    var hookShowUnit: Boolean
+        get() = sp(AppContext.get()).getBoolean("hook_show_unit", true)
+        set(v) {
+            getEditor().putBoolean("hook_show_unit", v).commit()
+            notifyHookUpdate()
+        }
+
     var hookShowCurrent: Boolean
         get() = sp(AppContext.get()).getBoolean("hook_show_current", false)
         set(v) {

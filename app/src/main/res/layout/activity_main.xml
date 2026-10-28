@@ -1030,6 +1030,13 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="温度" />
+
+                        <com.google.android.material.chip.Chip
+                            android:id="@+id/chip_hook_unit"
+                            style="@style/Widget.Material3.Chip.Filter"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="显示单位 (W/mA)" />
                     </com.google.android.material.chip.ChipGroup>
 
                     <!-- 重启 SystemUI 快捷按钮 -->

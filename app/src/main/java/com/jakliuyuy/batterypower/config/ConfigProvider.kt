@@ -63,6 +63,7 @@ class ConfigProvider : ContentProvider() {
             "hook_enabled",
             "hook_refresh_ms",
             "show_unit",
+            "hook_show_unit",
             "hook_side",
             "hook_offset_x",
             "hook_offset_y",

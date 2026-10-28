@@ -3,47 +3,44 @@ package com.jakliuyuy.batterypower.hook
 import android.content.Context
 import android.graphics.Color
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
-import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.jakliuyuy.batterypower.battery.BatteryReader
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
-import kotlin.math.abs
 
 /**
- * 状态栏 LSPosed Hook 引擎：
+ * Hook SystemUI 状态栏时钟，注入实时电池功率监视。
  *
- * 核心创新架构 —— 智能时钟容器内嵌引擎（彻底杜绝开机漂移与 FrameLayout 视图重叠）：
- * 1. 深度自适应父容器：针对各大 ROM（包括原生 AOSP 的 FrameLayout clock_container），
- *    自动构建水平流式包装器（PowerClockWrapper），让电池功率与时钟始终保持水平并排，
- *    100% 杜绝在 FrameLayout 等容器中发生文字重合遮挡。
- * 2. 天然几何防漂移：完全继承时钟在系统状态栏中的原始布局槽位。时钟在开机冷启动、
- *    DisplayCutout（挖孔/刘海）避让、通知图标增减、屏幕旋转时，功率视图与时钟天然一体，漂移率直接归零。
- * 3. 动态热插拔与左右侧即时生效：切换左/右侧锚点毫秒级重排容器内部层级，无需重启手机。
- * 4. 防脱落轮询生命周期（Anti-Detach）：针对息屏、锁屏解锁、全屏沉浸式切换，监听 AttachState，永不假死。
- * 5. 精准时钟过滤器：智能识别并仅注入折叠状态栏时钟，彻底排除锁屏大时钟与 QS 下拉时钟的误注入。
- * 6. 零延迟颜色自适应：OnPreDraw 联动监听时钟深浅色切换，黑白文字即时同步。
+ * 核心优化（特别针对 ColorOS 17 / 一加 Ace 6T）：
+ * 1. 字体风格 1:1 克隆：完美同步时钟原生 Typeface（OPlus Sans）、字重（FakeBold / Weight）、字间距与字体特性。
+ * 2. 默认字号 1:1 等大对齐：直接继承 clock.textSize（单位 PX），使功率高度与时钟分毫不差。
+ * 3. 颜色零延迟自适应：支持 ColorStateList 整体克隆与 PreDraw 监听，浅色界面秒变深黑，深色界面秒变纯白，彻底解决浅色模式下泛白看不清。
+ * 4. 垂直基线对齐：isBaselineAligned 开启，文本底端完全对齐。
+ * 5. 左右锚点热切换、息屏假死唤醒守护与精准时钟过滤。
  */
 object SystemUIHook {
 
-    private val CLOCK_CANDIDATES = listOf(
+    private val CANDIDATES = listOf(
         "com.oplus.systemui.statusbar.policy.Clock",
         "com.android.systemui.statusbar.policy.Clock",
         "com.oplusos.systemui.statusbar.policy.Clock"
     )
 
-    private const val POWER_VIEW_TAG = "battery_power_native_tag"
-    private const val WRAPPER_TAG = "battery_power_clock_wrapper"
+    private const val WRAPPER_TAG = "bp_clock_wrapper_tag"
+    private const val POWER_VIEW_TAG = "bp_power_tv_tag"
 
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
-        val clockClass = CLOCK_CANDIDATES.firstNotNullOfOrNull {
+        val clockClass = CANDIDATES.firstNotNullOfOrNull {
             runCatching { XposedHelpers.findClass(it, lpparam.classLoader) }.getOrNull()
         } ?: return
 
@@ -53,7 +50,6 @@ object SystemUIHook {
             object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     val clock = param.thisObject as? View ?: return
-                    // 过滤非状态栏时钟（如锁屏、下拉QS面板时钟）
                     if (!isStatusBarClock(clock)) return
                     inject(clock)
                 }
@@ -111,7 +107,7 @@ object SystemUIHook {
                 wrapper = existingWrapper
                 tv = wrapper.findViewWithTag(POWER_VIEW_TAG) ?: return
             } else {
-                // 构建流式自适应包装器，彻底根绝 FrameLayout 叠字
+                // 构建流式自适应包装器，原位替换时钟并继承所有 LayoutParams
                 val originalLp = clock.layoutParams
                 val clockIndex = rawParent.indexOfChild(clock)
 
@@ -119,15 +115,19 @@ object SystemUIHook {
                     tag = WRAPPER_TAG
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
+                    isBaselineAligned = true
                     layoutParams = originalLp
                 }
 
                 tv = TextView(ctx).apply {
                     tag = POWER_VIEW_TAG
                     gravity = Gravity.CENTER_VERTICAL
-                    includeFontPadding = false
+                    includeFontPadding = (clock as? TextView)?.includeFontPadding ?: false
                     text = "--"
                 }
+
+                // 首次将字体与时钟完全同步
+                cloneClockTypography(tv, clock)
 
                 // 从原父级移出并移入包装器
                 rawParent.removeView(clock)
@@ -173,40 +173,52 @@ object SystemUIHook {
             tv.text = readSystemPower(ctx, freshCfg)
         }
 
-        // 零延迟文本颜色自适应（时钟变黑/白字瞬间自动同步）
-        clock.viewTreeObserver?.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                if (!tv.isAttachedToWindow || !clock.isAttachedToWindow) return true
-                if (clock is TextView) {
-                    val cfg = ConfigBridge.query(ctx)
-                    val adapt = ConfigBridge.boolOf(cfg, "hook_adapt_color", true)
-                    if (adapt && tv.currentTextColor != clock.currentTextColor) {
+        // 实时时钟颜色与字体自适应守护（浅色应用变黑，深色应用变白瞬间完全同步）
+        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+            if (!tv.isAttachedToWindow || !clock.isAttachedToWindow) return@OnPreDrawListener true
+            if (clock is TextView) {
+                // 实时克隆字体与属性
+                cloneClockTypography(tv, clock)
+
+                val cfg = ConfigBridge.query(ctx)
+                val adapt = ConfigBridge.boolOf(cfg, "hook_adapt_color", true)
+                if (adapt) {
+                    if (clock.textColors != null && tv.textColors != clock.textColors) {
+                        tv.setTextColor(clock.textColors)
+                    } else if (tv.currentTextColor != clock.currentTextColor) {
                         tv.setTextColor(clock.currentTextColor)
                     }
                 }
-                return true
             }
-        })
+            true
+        }
+        clock.viewTreeObserver?.addOnPreDrawListener(preDrawListener)
+
+        // 监听 layout 变化同步颜色与基准尺寸
+        clock.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            if (clock is TextView) {
+                cloneClockTypography(tv, clock)
+                val cfg = ConfigBridge.query(ctx)
+                if (ConfigBridge.boolOf(cfg, "hook_adapt_color", true)) {
+                    if (clock.textColors != null) tv.setTextColor(clock.textColors)
+                }
+            }
+        }
 
         // 启动主轮询循环（生命周期守护，防止息屏/旋转/切后台后轮询死亡）
         val handler = Handler(Looper.getMainLooper())
         val refreshRunnable = object : Runnable {
             override fun run() {
-                val isAttached = tv.isAttachedToWindow && clock.isAttachedToWindow
                 val cfg = ConfigBridge.query(ctx)
-                val refreshMs = ConfigBridge.longOf(cfg, "hook_refresh_ms", 1000L).coerceIn(400, 5000)
+                applyStyleAndPosition(tv, clock, wrapper, cfg)
+                tv.text = readSystemPower(ctx, cfg)
 
-                if (isAttached) {
-                    applyStyleAndPosition(tv, clock, wrapper, cfg)
-                    tv.text = readSystemPower(ctx, cfg)
-                }
-
-                // 即使暂时没有 attached（如息屏、过渡中），也定期继续调度等待恢复
+                val refreshMs = ConfigBridge.longOf(cfg, "hook_refresh_ms", 1000L).coerceIn(500, 5000)
                 handler.postDelayed(this, refreshMs)
             }
         }
 
-        // 监听视图恢复 Attach，即时触发一次更新
+        // 注册 Attach/Detach 监听，息屏灭屏或全屏退出后即刻唤醒
         clock.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
                 handler.removeCallbacks(refreshRunnable)
@@ -216,6 +228,26 @@ object SystemUIHook {
         })
 
         handler.post(refreshRunnable)
+    }
+
+    /**
+     * 1:1 克隆系统时钟字体与排版特征（ColorOS 17 / 一加 OPlus Sans 专属中等字重）
+     */
+    private fun cloneClockTypography(tv: TextView, clock: View) {
+        if (clock !is TextView) return
+        try {
+            if (tv.typeface != clock.typeface) {
+                tv.typeface = clock.typeface
+            }
+            tv.paint.isFakeBoldText = clock.paint.isFakeBoldText
+            tv.paintFlags = clock.paintFlags
+            tv.letterSpacing = clock.letterSpacing
+            tv.includeFontPadding = clock.includeFontPadding
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                tv.fontFeatureSettings = clock.fontFeatureSettings
+            }
+        } catch (_: Exception) {
+        }
     }
 
     private fun applyStyleAndPosition(
@@ -238,9 +270,21 @@ object SystemUIHook {
             tv.visibility = View.VISIBLE
         }
 
-        // 字号设置
-        val textSize = ConfigBridge.floatOf(cfg, "hook_text_size", 11f)
-        tv.textSize = textSize
+        // 字体风格克隆
+        cloneClockTypography(tv, clock)
+
+        // 字号设置：若用户选择跟随系统（0 或默认），则直接使用时钟真实像素大小；否则采用自定义字号
+        val customTextSize = ConfigBridge.floatOf(cfg, "hook_text_size", 0f)
+        if (customTextSize <= 0f && clock is TextView && clock.textSize > 0f) {
+            // 分毫不差，直接对齐时钟原生字号
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, clock.textSize)
+        } else if (customTextSize > 0f) {
+            tv.textSize = customTextSize
+        } else if (clock is TextView) {
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, clock.textSize)
+        } else {
+            tv.textSize = 13f
+        }
 
         // 动态调整左右顺序（支持实时热生效）
         val targetSide = ConfigBridge.intOf(cfg, "hook_side", 0) // 0=右侧, 1=左侧
@@ -264,13 +308,17 @@ object SystemUIHook {
         // 颜色自适应（默认跟随系统时钟当前文本色）
         val adaptColor = ConfigBridge.boolOf(cfg, "hook_adapt_color", true)
         if (adaptColor && clock is TextView) {
-            tv.setTextColor(clock.currentTextColor)
+            if (clock.textColors != null) {
+                tv.setTextColor(clock.textColors)
+            } else {
+                tv.setTextColor(clock.currentTextColor)
+            }
         } else {
             val customColor = ConfigBridge.intOf(cfg, "hook_text_color", Color.WHITE)
             tv.setTextColor(customColor)
         }
 
-        // 硬件加速平移微调（绝不触发表层二次 measure/layout，零死循环、零晃动）
+        // 硬件加速平移微调
         val ox = ConfigBridge.intOf(cfg, "hook_offset_x", 0)
         val oy = ConfigBridge.intOf(cfg, "hook_offset_y", 0)
         tv.translationX = ox.toFloat()
@@ -293,60 +341,51 @@ object SystemUIHook {
             val temp = bintent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
             val status = bintent?.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN) ?: 0
 
-            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            var isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                     status == BatteryManager.BATTERY_STATUS_FULL
 
-            // 电流单位智能自适应：μA -> mA
-            val normalizedMa = if (cur == Int.MIN_VALUE) {
-                0
-            } else if (abs(cur) > 50_000) {
-                cur / 1000
-            } else {
-                cur
-            }
+            val invert = ConfigBridge.boolOf(cfg, "polarity_invert", false)
+            if (invert) isCharging = !isCharging
 
-            val w = abs(normalizedMa / 1000.0 * (mv / 1000.0))
-            val signedW = if (isCharging) w else -w
-            val unit = ConfigBridge.boolOf(cfg, "show_unit", true)
+            val doubleCell = ConfigBridge.boolOf(cfg, "double_cell_fix", false)
 
+            val ma = if (cur == Int.MIN_VALUE) 0 else cur
+            var calcW = kotlin.math.abs(ma / 1000.0 * (mv / 1000.0))
+            if (doubleCell) calcW *= 2.0
+
+            val sample = BatteryReader.Sample(
+                powerW = if (isCharging) calcW else -calcW,
+                currentMa = if (doubleCell) ma * 2 else ma,
+                voltageMv = mv,
+                level = cap.coerceIn(0, 100),
+                tempC = temp / 10.0,
+                status = if (isCharging) "Charging" else "Discharging",
+                isCharging = isCharging,
+                source = "system"
+            )
+
+            val unit = ConfigBridge.boolOf(cfg, "hook_show_unit", ConfigBridge.boolOf(cfg, "show_unit", true))
             val parts = mutableListOf<String>()
 
-            // 1. 功率
             if (ConfigBridge.boolOf(cfg, "hook_show_power", true)) {
-                val prefix = if (isCharging) "+" else "-"
-                val valStr = if (abs(signedW) >= 10) String.format("%.1f", abs(signedW)) else String.format("%.2f", abs(signedW))
-                parts.add(if (unit) "$prefix${valStr}W" else "$prefix$valStr")
+                parts.add(sample.powerText(unit))
             }
-
-            // 2. 电流
             if (ConfigBridge.boolOf(cfg, "hook_show_current", false)) {
-                val prefix = if (isCharging) "+" else "-"
-                val absMa = abs(normalizedMa)
-                val str = if (absMa >= 1000) String.format("%.2fA", absMa / 1000.0) else "${absMa}mA"
-                val body = if (unit) str else str.replace("mA", "").replace("A", "")
-                parts.add("$prefix$body")
+                parts.add(sample.currentText(unit))
             }
-
-            // 3. 电压
             if (ConfigBridge.boolOf(cfg, "hook_show_voltage", false)) {
-                val vStr = String.format("%.2f", mv / 1000.0)
-                parts.add(if (unit) "${vStr}V" else vStr)
+                parts.add(sample.voltageText(unit))
             }
-
-            // 4. 温度
             if (ConfigBridge.boolOf(cfg, "hook_show_temp", false) && temp > 0) {
-                val tStr = String.format("%.1f", temp / 10.0)
-                parts.add(if (unit) "$tStr°C" else tStr)
+                parts.add(sample.tempText(unit))
+            }
+            if (ConfigBridge.boolOf(cfg, "hook_show_level", false)) {
+                parts.add(sample.levelText(unit))
             }
 
-            // 5. 电量
-            if (ConfigBridge.boolOf(cfg, "hook_show_level", true)) {
-                parts.add(if (unit) "$cap%" else "$cap")
-            }
-
-            if (parts.isEmpty()) "--" else parts.joinToString(" ")
+            if (parts.isEmpty()) sample.powerText(unit) else parts.joinToString(" ")
         } catch (_: Exception) {
-            "--"
+            "--W"
         }
     }
 

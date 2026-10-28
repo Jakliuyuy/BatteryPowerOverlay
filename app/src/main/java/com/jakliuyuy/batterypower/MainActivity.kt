@@ -147,14 +147,15 @@ class MainActivity : AppCompatActivity() {
             binding.tvPreviewClockLeft.visibility = View.GONE
             binding.tvPreviewClockRight.visibility = View.GONE
         } else {
+            val hookUnit = SettingsStore.hookShowUnit
             val hookParts = mutableListOf<String>()
-            if (SettingsStore.hookShowPower) hookParts.add(sample.powerText(unit))
-            if (SettingsStore.hookShowCurrent) hookParts.add(sample.currentText(unit))
-            if (SettingsStore.hookShowVoltage) hookParts.add(sample.voltageText(unit))
-            if (SettingsStore.hookShowTemp && sample.tempC > 0) hookParts.add(sample.tempText(unit))
-            if (SettingsStore.hookShowLevel) hookParts.add(sample.levelText(unit))
+            if (SettingsStore.hookShowPower) hookParts.add(sample.powerText(hookUnit))
+            if (SettingsStore.hookShowCurrent) hookParts.add(sample.currentText(hookUnit))
+            if (SettingsStore.hookShowVoltage) hookParts.add(sample.voltageText(hookUnit))
+            if (SettingsStore.hookShowTemp && sample.tempC > 0) hookParts.add(sample.tempText(hookUnit))
+            if (SettingsStore.hookShowLevel) hookParts.add(sample.levelText(hookUnit))
 
-            val hookText = if (hookParts.isEmpty()) sample.powerText(unit) else hookParts.joinToString(" ")
+            val hookText = if (hookParts.isEmpty()) sample.powerText(hookUnit) else hookParts.joinToString(" ")
             val isLeft = SettingsStore.hookSide == 1
 
             val targetTv = if (isLeft) binding.tvPreviewClockLeft else binding.tvPreviewClockRight
@@ -266,11 +267,13 @@ class MainActivity : AppCompatActivity() {
         // 文字颜色预览与调色盘
         updateOverlayColorPreview()
         binding.btnOverlayColor.setOnClickListener {
-            ColorPickerDialog.show(this, SettingsStore.textColor) { pickedColor ->
-                SettingsStore.textColor = pickedColor
-                updateOverlayColorPreview()
-                OverlayService.reload(this)
-                updatePreview()
+            runCatching {
+                ColorPickerDialog.show(this, SettingsStore.textColor) { pickedColor ->
+                    SettingsStore.textColor = pickedColor
+                    updateOverlayColorPreview()
+                    OverlayService.reload(this)
+                    updatePreview()
+                }
             }
         }
 
@@ -409,10 +412,15 @@ class MainActivity : AppCompatActivity() {
 
         updateHookColorPreview()
         binding.btnHookColor.setOnClickListener {
-            ColorPickerDialog.show(this, SettingsStore.hookTextColor) { picked ->
-                SettingsStore.hookTextColor = picked
-                updateHookColorPreview()
-                updatePreview()
+            runCatching {
+                ColorPickerDialog.show(this, SettingsStore.hookTextColor) { picked ->
+                    SettingsStore.hookTextColor = picked
+                    SettingsStore.hookAdaptColor = false
+                    binding.swHookAdaptColor.isChecked = false
+                    binding.layoutHookCustomColor.visibility = View.VISIBLE
+                    updateHookColorPreview()
+                    updatePreview()
+                }
             }
         }
 
@@ -433,12 +441,14 @@ class MainActivity : AppCompatActivity() {
         binding.chipHookVoltage.isChecked = SettingsStore.hookShowVoltage
         binding.chipHookLevel.isChecked = SettingsStore.hookShowLevel
         binding.chipHookTemp.isChecked = SettingsStore.hookShowTemp
+        binding.chipHookUnit.isChecked = SettingsStore.hookShowUnit
 
         binding.chipHookPower.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowPower = c; updatePreview() }
         binding.chipHookCurrent.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowCurrent = c; updatePreview() }
         binding.chipHookVoltage.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowVoltage = c; updatePreview() }
         binding.chipHookLevel.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowLevel = c; updatePreview() }
         binding.chipHookTemp.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowTemp = c; updatePreview() }
+        binding.chipHookUnit.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowUnit = c; updatePreview() }
 
         // 重启 SystemUI
         binding.btnRestartSystemui.setOnClickListener {
