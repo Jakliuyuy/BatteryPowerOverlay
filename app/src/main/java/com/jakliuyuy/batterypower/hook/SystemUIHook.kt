@@ -95,11 +95,11 @@ object SystemUIHook {
 
     private fun inject(clock: View) {
         val rawParent = clock.parent as? ViewGroup ?: return
-        val rootFrame = findStatusBarRoot(clock) ?: (rawParent as? FrameLayout) ?: return
+        val rootFrame = findStatusBarRoot(clock) ?: (rawParent as? FrameLayout)
         val ctx = clock.context
 
         // 查找或创建共享的 TextView
-        var tv = rootFrame.findViewWithTag<TextView>(POWER_VIEW_TAG)
+        var tv = rootFrame?.findViewWithTag<TextView>(POWER_VIEW_TAG)
             ?: (clock.parent as? ViewGroup)?.findViewWithTag(POWER_VIEW_TAG)
 
         if (tv == null) {
@@ -148,6 +148,27 @@ object SystemUIHook {
             handler.postDelayed(refreshRunnable, freshMs)
         }
 
+        // 实时时钟颜色与字体自适应守护（深浅色模式秒级自适应）
+        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+            if (!tv.isAttachedToWindow || !clock.isAttachedToWindow) return@OnPreDrawListener true
+            if (clock is TextView) {
+                cloneClockTypography(tv, clock)
+                val cfg = ConfigBridge.query(ctx)
+                val adapt = ConfigBridge.boolOf(cfg, "hook_adapt_color", true)
+                if (adapt) {
+                    syncClockColors(tv, clock)
+                }
+            }
+            true
+        }
+        clock.viewTreeObserver?.addOnPreDrawListener(preDrawListener)
+
+        // 监听 layout 变化动态修正坐标与排版
+        clock.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            val cfg = ConfigBridge.query(ctx)
+            applyLayerLayout(tv, clock, rawParent, rootFrame, cfg)
+        }
+
         // 息屏/全屏恢复监听
         clock.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
@@ -167,11 +188,11 @@ object SystemUIHook {
         tv: TextView,
         clock: View,
         rawParent: ViewGroup,
-        rootFrame: FrameLayout,
+        rootFrame: FrameLayout?,
         cfg: Map<String, String>
     ) {
         val enabled = ConfigBridge.boolOf(cfg, "hook_enabled", true)
-        if (!enabled || clock.visibility != View.VISIBLE) {
+        if (!enabled) {
             tv.visibility = View.GONE
             return
         } else {
@@ -199,17 +220,16 @@ object SystemUIHook {
             tv.setTextColor(customColor)
         }
 
-        val layerMode = ConfigBridge.intOf(cfg, "hook_layer_mode", 0) // 0=覆盖图层(不占通知), 1=并排图层(占通知)
+        val layerMode = ConfigBridge.intOf(cfg, "hook_layer_mode", 1) // 默认 1=并排图层(最稳)，0=覆盖图层
         val side = ConfigBridge.intOf(cfg, "hook_side", 0)           // 0=时钟右侧, 1=时钟左侧
         val ox = ConfigBridge.intOf(cfg, "hook_offset_x", 0)
         val oy = ConfigBridge.intOf(cfg, "hook_offset_y", 0)
         val ctx = tv.context
 
-        if (layerMode == 0) {
+        if (layerMode == 0 && rootFrame != null) {
             // ==========================================
-            // 模式 A：独立覆盖图层（绝不挤占通知空间）
+            // 模式 A：独立覆盖图层（悬浮在状态栏顶层）
             // ==========================================
-            // 如果之前在并排 wrapper 中，则将其移出挂载到顶层 FrameLayout
             val currentParent = tv.parent as? ViewGroup
             if (currentParent != rootFrame) {
                 currentParent?.removeView(tv)
@@ -223,7 +243,6 @@ object SystemUIHook {
                 rootFrame.addView(tv, lp)
             }
 
-            // 精准预测宽高，避免布局完成前出现 0 宽偏移
             if (tv.width == 0 || tv.height == 0) {
                 tv.measure(
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
@@ -233,7 +252,6 @@ object SystemUIHook {
             val tvW = if (tv.width > 0) tv.width else tv.measuredWidth
             val tvH = if (tv.height > 0) tv.height else tv.measuredHeight
 
-            // 计算 clock 在 rootFrame 坐标系中的位置
             val rootLoc = IntArray(2)
             val clockLoc = IntArray(2)
             rootFrame.getLocationOnScreen(rootLoc)
@@ -243,10 +261,8 @@ object SystemUIHook {
             val clockYInRoot = clockLoc[1] - rootLoc[1]
 
             val targetX = if (side == 1) {
-                // 时钟左侧悬浮
                 clockXInRoot - tvW - dp(ctx, 4) + ox
             } else {
-                // 时钟右侧悬浮（覆盖在通知图标层上方）
                 clockXInRoot + clock.width + dp(ctx, 4) + ox
             }
 
@@ -257,9 +273,8 @@ object SystemUIHook {
 
         } else {
             // ==========================================
-            // 模式 B：并排流式图层（占用通知空间）
+            // 模式 B：原生流式并排（100% 稳定，同生共死）
             // ==========================================
-            // 如果在 rootFrame 中，移入时钟的包装器
             var wrapper = rawParent.findViewWithTag<LinearLayout>(WRAPPER_TAG)
             if (wrapper == null && clock.parent is LinearLayout && (clock.parent as View).tag == WRAPPER_TAG) {
                 wrapper = clock.parent as LinearLayout
@@ -305,7 +320,6 @@ object SystemUIHook {
 
                 rawParent.addView(wrapper, clockIndex)
             } else {
-                // 已有 wrapper，确保 tv 在其中
                 if (tv.parent != wrapper) {
                     (tv.parent as? ViewGroup)?.removeView(tv)
                     val tvLp = LinearLayout.LayoutParams(

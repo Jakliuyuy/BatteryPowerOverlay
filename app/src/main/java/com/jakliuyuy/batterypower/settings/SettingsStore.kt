@@ -155,7 +155,7 @@ object SettingsStore {
     const val LAYER_INLINE = 1
 
     var hookLayerMode: Int
-        get() = sp(AppContext.get()).getInt("hook_layer_mode", LAYER_OVERLAY)
+        get() = sp(AppContext.get()).getInt("hook_layer_mode", LAYER_INLINE)
         set(v) {
             getEditor().putInt("hook_layer_mode", v).commit()
             notifyHookUpdate()
