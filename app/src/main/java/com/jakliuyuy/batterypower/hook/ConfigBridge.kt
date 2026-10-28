@@ -56,6 +56,10 @@ object ConfigBridge {
     }
 
     fun query(ctx: Context): Map<String, String> {
+        // 1. 若内存缓存已就绪，直接返回，杜绝高频轮询引发的跨进程 IPC 与磁盘 commit
+        memoryCache?.let { return it }
+
+        // 2. 首次启动或缓存尚未就绪，尝试从主应用 ContentProvider 读取
         val now = System.currentTimeMillis()
         if (now >= nextRetryAt) {
             val fresh = tryQuery(ctx)
@@ -69,8 +73,7 @@ object ConfigBridge {
             nextRetryAt = now + 4000
         }
 
-        memoryCache?.let { return it }
-
+        // 3. 降级读取 SystemUI 本地 Direct Boot 磁盘镜像缓存
         val disk = loadFromDisk(ctx)
         if (disk != null) {
             memoryCache = disk

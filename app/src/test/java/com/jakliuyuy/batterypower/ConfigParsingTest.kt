@@ -77,4 +77,75 @@ class ConfigParsingTest {
         val refreshMsFromOverlay = ConfigBridge.longOf(overlayOnly, "hook_refresh_ms", ConfigBridge.longOf(overlayOnly, "refresh_ms", 1000L))
         assertEquals(2000L, refreshMsFromOverlay)
     }
+
+    @Test
+    fun testHardwareSettingsParsing() {
+        // 测试双电芯修正与极性翻转的跨进程解析
+        val enabledConfig = mapOf(
+            "polarity_invert" to "true",
+            "double_cell_fix" to "true"
+        )
+        assertTrue(ConfigBridge.boolOf(enabledConfig, "polarity_invert", false))
+        assertTrue(ConfigBridge.boolOf(enabledConfig, "double_cell_fix", false))
+
+        val disabledConfig = mapOf(
+            "polarity_invert" to "false",
+            "double_cell_fix" to "false"
+        )
+        assertFalse(ConfigBridge.boolOf(disabledConfig, "polarity_invert", true))
+        assertFalse(ConfigBridge.boolOf(disabledConfig, "double_cell_fix", true))
+
+        // 缺省回退
+        val emptyConfig = emptyMap<String, String>()
+        assertFalse(ConfigBridge.boolOf(emptyConfig, "polarity_invert", false))
+        assertFalse(ConfigBridge.boolOf(emptyConfig, "double_cell_fix", false))
+    }
+
+    @Test
+    fun testUnitDisplayParsing() {
+        // 状态栏专属单位覆盖全局单位
+        val hookUnitOnly = mapOf("hook_show_unit" to "false", "show_unit" to "true")
+        val unitResult1 = ConfigBridge.boolOf(hookUnitOnly, "hook_show_unit", ConfigBridge.boolOf(hookUnitOnly, "show_unit", true))
+        assertFalse(unitResult1)
+
+        // 专属单位未设时，回退至全局单位
+        val globalUnitOnly = mapOf("show_unit" to "false")
+        val unitResult2 = ConfigBridge.boolOf(globalUnitOnly, "hook_show_unit", ConfigBridge.boolOf(globalUnitOnly, "show_unit", true))
+        assertFalse(unitResult2)
+
+        val globalUnitOn = mapOf("show_unit" to "true")
+        val unitResult3 = ConfigBridge.boolOf(globalUnitOn, "hook_show_unit", ConfigBridge.boolOf(globalUnitOn, "show_unit", false))
+        assertTrue(unitResult3)
+    }
+
+    @Test
+    fun testAllKeysCompleteness() {
+        val requiredKeys = setOf(
+            "hook_enabled",
+            "hook_layer_mode",
+            "hook_refresh_ms",
+            "refresh_ms",
+            "global_refresh_ms",
+            "show_unit",
+            "hook_show_unit",
+            "hook_side",
+            "hook_offset_x",
+            "hook_offset_y",
+            "hook_adapt_color",
+            "hook_follow_clock_size",
+            "hook_text_color",
+            "hook_text_size",
+            "hook_show_power",
+            "hook_show_current",
+            "hook_show_voltage",
+            "hook_show_temp",
+            "hook_show_level",
+            "polarity_invert",
+            "double_cell_fix"
+        )
+        val providerKeys = com.jakliuyuy.batterypower.config.ConfigProvider.ALL_KEYS.toSet()
+        for (key in requiredKeys) {
+            assertTrue("ConfigProvider.ALL_KEYS 必须包含关键跨进程键: $key", providerKeys.contains(key))
+        }
+    }
 }

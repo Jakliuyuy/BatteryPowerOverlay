@@ -57,10 +57,11 @@ class GlobalSettingsActivity : AppCompatActivity() {
         binding.swShowUnit.isChecked = SettingsStore.showUnit
         binding.swShowUnit.setOnCheckedChangeListener { _, isChecked ->
             SettingsStore.showUnit = isChecked
+            SettingsStore.hookShowUnit = isChecked
             OverlayService.reload(this)
             Toast.makeText(
                 this,
-                if (isChecked) "已开启单位显示 (W / mA / V / °C / %)" else "已隐藏单位符号",
+                if (isChecked) "已全局开启单位显示 (W / mA / V / °C / %)" else "已全局隐藏单位符号",
                 Toast.LENGTH_SHORT
             ).show()
         }

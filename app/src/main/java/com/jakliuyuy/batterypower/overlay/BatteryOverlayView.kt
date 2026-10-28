@@ -137,6 +137,26 @@ class BatteryOverlayView(context: Context) : TextView(context) {
     fun reloadConfig() {
         applyStyle()
         updateContent()
+
+        // 1. 同步最新存储的坐标（如外部点击了复位或修改了位置）
+        val savedX = SettingsStore.overlayX
+        val savedY = SettingsStore.overlayY
+        if (savedX >= 0 && savedY >= 0) {
+            params.x = savedX
+            params.y = savedY
+        }
+        if (isAttached) {
+            try {
+                wm.updateViewLayout(this, params)
+            } catch (_: Exception) {
+            }
+        }
+
+        // 2. 立即重置刷新定时器，使最新的全局刷新频率毫秒级生效
+        if (isRunning) {
+            handler.removeCallbacks(refreshRunnable)
+            handler.post(refreshRunnable)
+        }
     }
 
     private fun updateContent() {

@@ -49,7 +49,7 @@ class ConfigProvider : ContentProvider() {
 
     companion object {
         const val AUTHORITY = "com.jakliuyuy.batterypower.config"
-        val CONTENT_URI: Uri = Uri.parse("content://$AUTHORITY/config")
+        val CONTENT_URI: Uri get() = Uri.parse("content://$AUTHORITY/config")
 
         fun notifyChanged(context: Context) {
             try {
@@ -79,7 +79,9 @@ class ConfigProvider : ContentProvider() {
             "hook_show_current",
             "hook_show_voltage",
             "hook_show_temp",
-            "hook_show_level"
+            "hook_show_level",
+            "polarity_invert",
+            "double_cell_fix"
         )
     }
 }

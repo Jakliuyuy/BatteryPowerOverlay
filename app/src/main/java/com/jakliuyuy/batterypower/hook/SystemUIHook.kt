@@ -119,33 +119,6 @@ object SystemUIHook {
         applyLayerLayout(tv, clock, rawParent, rootFrame, initialCfg)
         tv.text = readSystemPower(ctx, initialCfg)
 
-        // 注册实时配置监听，支持图层模式/左右侧/偏移/颜色热更新
-        ConfigBridge.ensureObserver(ctx) { freshCfg ->
-            applyLayerLayout(tv, clock, rawParent, rootFrame, freshCfg)
-            tv.text = readSystemPower(ctx, freshCfg)
-        }
-
-        // 实时时钟颜色与字体自适应守护（深浅色模式秒级自适应）
-        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
-            if (!tv.isAttachedToWindow || !clock.isAttachedToWindow) return@OnPreDrawListener true
-            if (clock is TextView) {
-                cloneClockTypography(tv, clock)
-                val cfg = ConfigBridge.query(ctx)
-                val adapt = ConfigBridge.boolOf(cfg, "hook_adapt_color", true)
-                if (adapt) {
-                    syncClockColors(tv, clock)
-                }
-            }
-            true
-        }
-        clock.viewTreeObserver?.addOnPreDrawListener(preDrawListener)
-
-        // 监听 layout 变化动态修正覆盖坐标与颜色
-        clock.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            val cfg = ConfigBridge.query(ctx)
-            applyLayerLayout(tv, clock, rawParent, rootFrame, cfg)
-        }
-
         // 主轮询循环（生命周期守护）
         val handler = Handler(Looper.getMainLooper())
         val refreshRunnable = object : Runnable {
@@ -154,9 +127,25 @@ object SystemUIHook {
                 applyLayerLayout(tv, clock, rawParent, rootFrame, cfg)
                 tv.text = readSystemPower(ctx, cfg)
 
-                val refreshMs = ConfigBridge.longOf(cfg, "hook_refresh_ms", ConfigBridge.longOf(cfg, "refresh_ms", 1000L)).coerceIn(300, 5000)
+                val refreshMs = ConfigBridge.longOf(
+                    cfg, "hook_refresh_ms",
+                    ConfigBridge.longOf(cfg, "refresh_ms", 1000L)
+                ).coerceIn(300, 5000)
                 handler.postDelayed(this, refreshMs)
             }
+        }
+
+        // 注册实时配置监听，支持图层模式/左右侧/偏移/颜色/全局刷新频率热更新
+        ConfigBridge.ensureObserver(ctx) { freshCfg ->
+            applyLayerLayout(tv, clock, rawParent, rootFrame, freshCfg)
+            tv.text = readSystemPower(ctx, freshCfg)
+            // 立即以最新刷新频率重置主轮询节奏
+            handler.removeCallbacks(refreshRunnable)
+            val freshMs = ConfigBridge.longOf(
+                freshCfg, "hook_refresh_ms",
+                ConfigBridge.longOf(freshCfg, "refresh_ms", 1000L)
+            ).coerceIn(300, 5000)
+            handler.postDelayed(refreshRunnable, freshMs)
         }
 
         // 息屏/全屏恢复监听

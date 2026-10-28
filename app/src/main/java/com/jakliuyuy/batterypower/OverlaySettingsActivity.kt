@@ -73,22 +73,7 @@ class OverlaySettingsActivity : AppCompatActivity() {
     }
 
     private fun setupOverlaySwitch() {
-        binding.swOverlay.setOnCheckedChangeListener { _, checked ->
-            if (checked) {
-                if (!Settings.canDrawOverlays(this)) {
-                    Toast.makeText(this, "请授予悬浮窗显示权限", Toast.LENGTH_SHORT).show()
-                    overlayPermLauncher.launch(
-                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-                    )
-                    binding.swOverlay.isChecked = false
-                    return@setOnCheckedChangeListener
-                }
-                requestNotifPermission()
-                OverlayService.start(this)
-            } else {
-                OverlayService.stop(this)
-            }
-        }
+        refreshOverlaySwitchState()
 
         binding.swOverlaySnap.isChecked = SettingsStore.overlaySnapEdge
         binding.swOverlaySnap.setOnCheckedChangeListener { _, checked ->
@@ -230,7 +215,24 @@ class OverlaySettingsActivity : AppCompatActivity() {
     }
 
     private fun refreshOverlaySwitchState() {
+        binding.swOverlay.setOnCheckedChangeListener(null)
         binding.swOverlay.isChecked = Settings.canDrawOverlays(this) && isServiceRunning()
+        binding.swOverlay.setOnCheckedChangeListener { _, checked ->
+            if (checked) {
+                if (!Settings.canDrawOverlays(this)) {
+                    Toast.makeText(this, "请授予悬浮窗显示权限", Toast.LENGTH_SHORT).show()
+                    overlayPermLauncher.launch(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                    )
+                    binding.swOverlay.isChecked = false
+                    return@setOnCheckedChangeListener
+                }
+                requestNotifPermission()
+                OverlayService.start(this)
+            } else {
+                OverlayService.stop(this)
+            }
+        }
     }
 
     private fun isServiceRunning(): Boolean {

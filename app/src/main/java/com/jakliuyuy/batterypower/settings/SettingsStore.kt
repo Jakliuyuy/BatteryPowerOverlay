@@ -92,6 +92,7 @@ object SettingsStore {
             getEditor()
                 .putLong("refresh_ms", v)
                 .putLong("hook_refresh_ms", v)
+                .putLong("global_refresh_ms", v)
                 .commit()
             notifyHookUpdate()
         }
@@ -118,14 +119,20 @@ object SettingsStore {
             notifyHookUpdate()
         }
 
-    // 极性与双电芯
+    // 极性与双电芯（写入后即时触发跨进程通知）
     var polarityInvert: Boolean
         get() = sp(AppContext.get()).getBoolean("polarity_invert", false)
-        set(v) { getEditor().putBoolean("polarity_invert", v).commit() }
+        set(v) {
+            getEditor().putBoolean("polarity_invert", v).commit()
+            notifyHookUpdate()
+        }
 
     var doubleCellFix: Boolean
         get() = sp(AppContext.get()).getBoolean("double_cell_fix", false)
-        set(v) { getEditor().putBoolean("double_cell_fix", v).commit() }
+        set(v) {
+            getEditor().putBoolean("double_cell_fix", v).commit()
+            notifyHookUpdate()
+        }
 
     // -------------------------------------------------------------
     // Hook 模式参数（SystemUI 进程使用）
