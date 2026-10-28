@@ -134,6 +134,17 @@ object SettingsStore {
             notifyHookUpdate()
         }
 
+    // 图层模式定义：0=独立覆盖图层（悬浮在通知上方，不挤压通知图标），1=并排图层（与时钟流式并列，会占用通知位置）
+    const val LAYER_OVERLAY = 0
+    const val LAYER_INLINE = 1
+
+    var hookLayerMode: Int
+        get() = sp(AppContext.get()).getInt("hook_layer_mode", LAYER_OVERLAY)
+        set(v) {
+            getEditor().putInt("hook_layer_mode", v).commit()
+            notifyHookUpdate()
+        }
+
     // 锚点定义
     const val ANCHOR_CLOCK_RIGHT = 0     // 时钟右侧（原生同级内嵌，绝对防漂移）
     const val ANCHOR_CLOCK_LEFT = 1      // 时钟左侧（原生同级内嵌，绝对防漂移）

@@ -339,6 +339,26 @@ class MainActivity : AppCompatActivity() {
             updatePreview()
         }
 
+        // 图层模式选择（二选一：覆盖图层 vs 并排图层）
+        if (SettingsStore.hookLayerMode == SettingsStore.LAYER_INLINE) {
+            binding.toggleHookLayer.check(R.id.btn_hook_layer_inline)
+            binding.tvHookLayerDesc.text = "并排图层：与时钟流式并列，会轻微占用通知图标空间"
+        } else {
+            binding.toggleHookLayer.check(R.id.btn_hook_layer_overlay)
+            binding.tvHookLayerDesc.text = "覆盖图层：悬浮在通知上方，不挤占任何通知图标空间（推荐）"
+        }
+        binding.toggleHookLayer.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            if (checkedId == R.id.btn_hook_layer_inline) {
+                SettingsStore.hookLayerMode = SettingsStore.LAYER_INLINE
+                binding.tvHookLayerDesc.text = "并排图层：与时钟流式并列，会轻微占用通知图标空间"
+            } else {
+                SettingsStore.hookLayerMode = SettingsStore.LAYER_OVERLAY
+                binding.tvHookLayerDesc.text = "覆盖图层：悬浮在通知上方，不挤占任何通知图标空间（推荐）"
+            }
+            updatePreview()
+        }
+
         // 锚点选择
         if (SettingsStore.hookSide == 1) {
             binding.toggleHookSide.check(R.id.btn_hook_side_left)
