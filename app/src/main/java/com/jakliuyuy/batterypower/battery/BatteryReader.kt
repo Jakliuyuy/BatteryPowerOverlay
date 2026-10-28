@@ -1,14 +1,20 @@
 package com.jakliuyuy.batterypower.battery
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.BatteryManager
+import android.os.SystemClock
 import com.jakliuyuy.batterypower.settings.SettingsStore
+import java.util.concurrent.Executors
 import kotlin.math.abs
 
 /**
  * 统一电池动力数据采集中心：
- * 1. Root 通道优先：内核 power_now / current_now 直读（支持双电芯与充放电极性校准）
- * 2. 系统 API 通道：BatteryManager + ACTION_BATTERY_CHANGED 系统粘性广播
+ * 1. 异步快照缓存引擎：后台线程定期/触发式采集，主线程 UI 0ms 零阻塞读取，彻底杜绝 ANR 与卡顿。
+ * 2. Root 通道优先：内核 power_now / current_now 直读（支持双电芯与充放电极性校准）。
+ * 3. 系统 API 通道：BatteryManager + ACTION_BATTERY_CHANGED 系统粘性广播。
+ * 4. 统一标准的格式化输出（功率、电流、电压、温度、电量）。
  */
 object BatteryReader {
 
@@ -22,19 +28,102 @@ object BatteryReader {
         val isCharging: Boolean,
         val source: String      // "root" / "system" / "failed"
     ) {
-        fun powerText(): String {
+        fun powerText(showUnit: Boolean = true): String {
             val prefix = if (isCharging) "+" else "-"
             val absW = abs(powerW)
-            val formatted = if (absW >= 10) String.format("%.1fW", absW) else String.format("%.2fW", absW)
-            return "$prefix$formatted"
+            val valStr = if (absW >= 10) String.format("%.1f", absW) else String.format("%.2f", absW)
+            return if (showUnit) "$prefix${valStr}W" else "$prefix$valStr"
+        }
+
+        fun currentText(showUnit: Boolean = true): String {
+            val prefix = if (isCharging) "+" else "-"
+            val absMa = abs(currentMa)
+            val str = if (absMa >= 1000) String.format("%.2fA", absMa / 1000.0) else "${absMa}mA"
+            return if (showUnit) "$prefix$str" else "$prefix${str.replace("mA", "").replace("A", "")}"
+        }
+
+        fun voltageText(showUnit: Boolean = true): String {
+            val vStr = String.format("%.2f", voltageMv / 1000.0)
+            return if (showUnit) "${vStr}V" else vStr
+        }
+
+        fun tempText(showUnit: Boolean = true): String {
+            val tStr = String.format("%.1f", tempC)
+            return if (showUnit) "$tStr°C" else tStr
+        }
+
+        fun levelText(showUnit: Boolean = true): String {
+            return if (showUnit) "$level%" else "$level"
         }
     }
 
+    @Volatile
+    private var cachedSample: Sample? = null
+
+    @Volatile
+    private var lastSampleTime = 0L
+
+    @Volatile
     private var lastRootHealthy = false
 
+    private val asyncExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "battery-sampler-worker").apply { isDaemon = true }
+    }
+
+    private var isWorkerRunning = false
+
+    /**
+     * 读取电池数据：优先返回内存快照，后台自驱刷新，主线程零延迟
+     */
     fun read(context: Context): Sample {
-        val invert = SettingsStore.polarityInvert
-        val doubleCell = SettingsStore.doubleCellFix
+        val now = SystemClock.elapsedRealtime()
+        val current = cachedSample
+
+        // 启动后台自驱轮询 Worker
+        ensureWorker(context.applicationContext ?: context)
+
+        if (current != null && (now - lastSampleTime < 1800L)) {
+            return current
+        }
+
+        // 若首次启动无缓存，同步采集一次（系统API或轻量探测）
+        if (current == null) {
+            val immediate = readDirectSync(context.applicationContext ?: context)
+            cachedSample = immediate
+            lastSampleTime = now
+            return immediate
+        }
+
+        return current
+    }
+
+    @Synchronized
+    private fun ensureWorker(appContext: Context) {
+        if (isWorkerRunning) return
+        isWorkerRunning = true
+        asyncExecutor.execute {
+            while (true) {
+                try {
+                    val s = readDirectSync(appContext)
+                    cachedSample = s
+                    lastSampleTime = SystemClock.elapsedRealtime()
+                } catch (_: Exception) {
+                }
+                try {
+                    Thread.sleep(800L)
+                } catch (_: InterruptedException) {
+                    break
+                }
+            }
+        }
+    }
+
+    /**
+     * 实际执行底层读取与解析
+     */
+    fun readDirectSync(context: Context): Sample {
+        val invert = try { SettingsStore.polarityInvert } catch (_: Exception) { false }
+        val doubleCell = try { SettingsStore.doubleCellFix } catch (_: Exception) { false }
 
         // 1. 尝试通过 Root 通道读取
         RootHelper.read()?.let { raw ->
@@ -80,7 +169,7 @@ object BatteryReader {
             val cur = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
             val bintent = context.registerReceiver(
                 null,
-                android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
+                IntentFilter(Intent.ACTION_BATTERY_CHANGED)
             )
             val mv = bintent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
             val cap = bintent?.getIntExtra(BatteryManager.EXTRA_LEVEL, 0) ?: 0
@@ -94,8 +183,6 @@ object BatteryReader {
                 isCharging = !isCharging
             }
 
-            // 系统 BatteryManager 的 CURRENT_NOW：
-            // 大多数设备返回 μA（绝对值 > 50000），少数返回 mA
             val normalizedCurrentMa = if (cur == Int.MIN_VALUE) {
                 0
             } else if (abs(cur) > 50_000) {

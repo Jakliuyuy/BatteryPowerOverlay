@@ -89,15 +89,19 @@ class BatteryOverlayView(context: Context) : TextView(context) {
         when (SettingsStore.overlayStyle) {
             SettingsStore.STYLE_CAPSULE_DARK -> {
                 background = ContextCompat.getDrawable(context, R.drawable.bg_capsule_dark)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
             }
             SettingsStore.STYLE_CAPSULE_FROSTED -> {
                 background = ContextCompat.getDrawable(context, R.drawable.bg_capsule_frosted)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
             }
             SettingsStore.STYLE_CAPSULE_OUTLINE -> {
                 background = ContextCompat.getDrawable(context, R.drawable.bg_capsule_outline)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
             }
             SettingsStore.STYLE_CAPSULE_LIGHT -> {
                 background = ContextCompat.getDrawable(context, R.drawable.bg_capsule_light)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
             }
             else -> {
                 setBackgroundColor(Color.TRANSPARENT)
@@ -141,26 +145,22 @@ class BatteryOverlayView(context: Context) : TextView(context) {
         val parts = mutableListOf<String>()
 
         if (SettingsStore.showPower) {
-            parts.add(if (unit) sample.powerText() else sample.powerText().removeSuffix("W"))
+            parts.add(sample.powerText(unit))
         }
         if (SettingsStore.showCurrent) {
-            val absMa = abs(sample.currentMa)
-            val currentStr = if (absMa >= 1000) String.format("%.2fA", sample.currentMa / 1000.0) else "${sample.currentMa}mA"
-            parts.add(if (unit) currentStr else currentStr.replace("mA", "").replace("A", ""))
+            parts.add(sample.currentText(unit))
         }
         if (SettingsStore.showVoltage) {
-            val vStr = String.format("%.2f", sample.voltageMv / 1000.0)
-            parts.add(if (unit) "${vStr}V" else vStr)
+            parts.add(sample.voltageText(unit))
         }
         if (SettingsStore.showTemp && sample.tempC > 0) {
-            val tStr = String.format("%.1f", sample.tempC)
-            parts.add(if (unit) "$tStr°C" else tStr)
+            parts.add(sample.tempText(unit))
         }
         if (SettingsStore.showLevel) {
-            parts.add(if (unit) "${sample.level}%" else "${sample.level}")
+            parts.add(sample.levelText(unit))
         }
 
-        text = if (parts.isEmpty()) sample.powerText() else parts.joinToString("  ")
+        text = if (parts.isEmpty()) sample.powerText(unit) else parts.joinToString("  ")
         setTextColor(SettingsStore.textColor)
     }
 

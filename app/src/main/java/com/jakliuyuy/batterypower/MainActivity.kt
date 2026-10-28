@@ -43,8 +43,7 @@ class MainActivity : AppCompatActivity() {
     private val dashboardRunnable = object : Runnable {
         override fun run() {
             if (!isMonitoringActive) return
-            updateDashboard()
-            updatePreview()
+            refreshRealtimeData()
             handler.postDelayed(this, 1000L)
         }
     }
@@ -86,12 +85,18 @@ class MainActivity : AppCompatActivity() {
     // 1. 顶部电池看板与实时视窗
     // -------------------------------------------------------------
     private fun setupDashboard() {
-        updateDashboard()
-        updatePreview()
+        val sample = BatteryReader.read(this)
+        updateDashboard(sample)
+        updatePreview(sample)
     }
 
-    private fun updateDashboard() {
+    private fun refreshRealtimeData() {
         val sample = BatteryReader.read(this)
+        updateDashboard(sample)
+        updatePreview(sample)
+    }
+
+    private fun updateDashboard(sample: BatteryReader.Sample) {
         val isRoot = sample.source == "root"
 
         binding.tvDriverSource.text = if (isRoot) "内核直读 (Root)" else "系统接口 (API)"
@@ -101,34 +106,29 @@ class MainActivity : AppCompatActivity() {
 
         binding.tvDriverSource.setTextColor(if (isRoot) brandColor else orangeColor)
 
-        binding.tvLivePower.text = sample.powerText()
+        binding.tvLivePower.text = sample.powerText(true)
         binding.tvLivePower.setTextColor(if (sample.isCharging) greenColor else orangeColor)
 
         binding.tvBatteryStatusDesc.text = if (sample.isCharging) "⚡ 正在充电（电量充入中）" else "🔋 正在放电（动力消耗中）"
 
-        binding.tvLiveCurrent.text = "${sample.currentMa} mA"
-        binding.tvLiveVoltage.text = String.format("%.2f V", sample.voltageMv / 1000.0)
-        binding.tvLiveLevel.text = "${sample.level} %"
-        binding.tvLiveTemp.text = String.format("%.1f °C", sample.tempC)
+        binding.tvLiveCurrent.text = sample.currentText(true)
+        binding.tvLiveVoltage.text = sample.voltageText(true)
+        binding.tvLiveLevel.text = sample.levelText(true)
+        binding.tvLiveTemp.text = sample.tempText(true)
     }
 
-    private fun updatePreview() {
-        val sample = BatteryReader.read(this)
+    private fun updatePreview(sample: BatteryReader.Sample = BatteryReader.read(this)) {
         val unit = SettingsStore.showUnit
 
         // 1. 悬浮窗微缩预览
         val overlayParts = mutableListOf<String>()
-        if (SettingsStore.showPower) overlayParts.add(if (unit) sample.powerText() else sample.powerText().removeSuffix("W"))
-        if (SettingsStore.showCurrent) {
-            val ma = abs(sample.currentMa)
-            val str = if (ma >= 1000) String.format("%.2fA", sample.currentMa / 1000.0) else "${sample.currentMa}mA"
-            overlayParts.add(if (unit) str else str.replace("mA", "").replace("A", ""))
-        }
-        if (SettingsStore.showVoltage) overlayParts.add(if (unit) String.format("%.2fV", sample.voltageMv / 1000.0) else String.format("%.2f", sample.voltageMv / 1000.0))
-        if (SettingsStore.showTemp && sample.tempC > 0) overlayParts.add(if (unit) String.format("%.1f°C", sample.tempC) else String.format("%.1f", sample.tempC))
-        if (SettingsStore.showLevel) overlayParts.add(if (unit) "${sample.level}%" else "${sample.level}")
+        if (SettingsStore.showPower) overlayParts.add(sample.powerText(unit))
+        if (SettingsStore.showCurrent) overlayParts.add(sample.currentText(unit))
+        if (SettingsStore.showVoltage) overlayParts.add(sample.voltageText(unit))
+        if (SettingsStore.showTemp && sample.tempC > 0) overlayParts.add(sample.tempText(unit))
+        if (SettingsStore.showLevel) overlayParts.add(sample.levelText(unit))
 
-        binding.tvPreviewOverlay.text = if (overlayParts.isEmpty()) sample.powerText() else overlayParts.joinToString("  ")
+        binding.tvPreviewOverlay.text = if (overlayParts.isEmpty()) sample.powerText(unit) else overlayParts.joinToString("  ")
         binding.tvPreviewOverlay.textSize = (SettingsStore.textSizeSp * 0.9f).coerceIn(10f, 18f)
         binding.tvPreviewOverlay.setTextColor(SettingsStore.textColor)
 
@@ -148,17 +148,13 @@ class MainActivity : AppCompatActivity() {
             binding.tvPreviewClockRight.visibility = View.GONE
         } else {
             val hookParts = mutableListOf<String>()
-            if (SettingsStore.hookShowPower) hookParts.add(if (unit) sample.powerText() else sample.powerText().removeSuffix("W"))
-            if (SettingsStore.hookShowCurrent) {
-                val ma = abs(sample.currentMa)
-                val str = if (ma >= 1000) String.format("%.2fA", sample.currentMa / 1000.0) else "${sample.currentMa}mA"
-                hookParts.add(if (unit) str else str.replace("mA", "").replace("A", ""))
-            }
-            if (SettingsStore.hookShowVoltage) hookParts.add(if (unit) String.format("%.2fV", sample.voltageMv / 1000.0) else String.format("%.2f", sample.voltageMv / 1000.0))
-            if (SettingsStore.hookShowTemp && sample.tempC > 0) hookParts.add(if (unit) String.format("%.1f°C", sample.tempC) else String.format("%.1f", sample.tempC))
-            if (SettingsStore.hookShowLevel) hookParts.add(if (unit) "${sample.level}%" else "${sample.level}")
+            if (SettingsStore.hookShowPower) hookParts.add(sample.powerText(unit))
+            if (SettingsStore.hookShowCurrent) hookParts.add(sample.currentText(unit))
+            if (SettingsStore.hookShowVoltage) hookParts.add(sample.voltageText(unit))
+            if (SettingsStore.hookShowTemp && sample.tempC > 0) hookParts.add(sample.tempText(unit))
+            if (SettingsStore.hookShowLevel) hookParts.add(sample.levelText(unit))
 
-            val hookText = if (hookParts.isEmpty()) sample.powerText() else hookParts.joinToString(" ")
+            val hookText = if (hookParts.isEmpty()) sample.powerText(unit) else hookParts.joinToString(" ")
             val isLeft = SettingsStore.hookSide == 1
 
             val targetTv = if (isLeft) binding.tvPreviewClockLeft else binding.tvPreviewClockRight
@@ -481,16 +477,14 @@ class MainActivity : AppCompatActivity() {
         binding.swPolarityInvert.isChecked = SettingsStore.polarityInvert
         binding.swPolarityInvert.setOnCheckedChangeListener { _, checked ->
             SettingsStore.polarityInvert = checked
-            updateDashboard()
-            updatePreview()
+            refreshRealtimeData()
             OverlayService.reload(this)
         }
 
         binding.swDoubleCell.isChecked = SettingsStore.doubleCellFix
         binding.swDoubleCell.setOnCheckedChangeListener { _, checked ->
             SettingsStore.doubleCellFix = checked
-            updateDashboard()
-            updatePreview()
+            refreshRealtimeData()
             OverlayService.reload(this)
         }
     }

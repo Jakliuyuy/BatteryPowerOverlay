@@ -82,7 +82,7 @@
                             android:id="@+id/tv_driver_source"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:background="@drawable/bg_capsule_frosted"
+                            android:background="@drawable/bg_stat_item"
                             android:paddingHorizontal="10dp"
                             android:paddingVertical="4dp"
                             android:text="内核直读"
@@ -126,7 +126,7 @@
                             android:layout_height="wrap_content"
                             android:layout_columnWeight="1"
                             android:layout_margin="4dp"
-                            android:background="@drawable/bg_capsule_frosted"
+                            android:background="@drawable/bg_stat_item"
                             android:orientation="vertical"
                             android:padding="12dp">
                             <TextView
@@ -151,7 +151,7 @@
                             android:layout_height="wrap_content"
                             android:layout_columnWeight="1"
                             android:layout_margin="4dp"
-                            android:background="@drawable/bg_capsule_frosted"
+                            android:background="@drawable/bg_stat_item"
                             android:orientation="vertical"
                             android:padding="12dp">
                             <TextView
@@ -176,7 +176,7 @@
                             android:layout_height="wrap_content"
                             android:layout_columnWeight="1"
                             android:layout_margin="4dp"
-                            android:background="@drawable/bg_capsule_frosted"
+                            android:background="@drawable/bg_stat_item"
                             android:orientation="vertical"
                             android:padding="12dp">
                             <TextView
@@ -201,7 +201,7 @@
                             android:layout_height="wrap_content"
                             android:layout_columnWeight="1"
                             android:layout_margin="4dp"
-                            android:background="@drawable/bg_capsule_frosted"
+                            android:background="@drawable/bg_stat_item"
                             android:orientation="vertical"
                             android:padding="12dp">
                             <TextView
@@ -254,7 +254,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="72dp"
                         android:layout_marginTop="12dp"
-                        android:background="@drawable/bg_capsule_frosted"
+                        android:background="@drawable/bg_statusbar_preview"
                         android:paddingHorizontal="16dp">
 
                         <!-- 模拟状态栏时钟与内嵌文本 -->
@@ -616,7 +616,7 @@
                             android:layout_width="28dp"
                             android:layout_height="28dp"
                             android:layout_marginEnd="10dp"
-                            android:background="@drawable/bg_capsule_frosted" />
+                            android:background="@drawable/bg_color_circle_preview" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btn_overlay_color"
@@ -934,7 +934,7 @@
                             android:layout_width="28dp"
                             android:layout_height="28dp"
                             android:layout_marginEnd="10dp"
-                            android:background="@drawable/bg_capsule_frosted" />
+                            android:background="@drawable/bg_color_circle_preview" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btn_hook_color"

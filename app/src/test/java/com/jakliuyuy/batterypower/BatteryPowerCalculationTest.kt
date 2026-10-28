@@ -90,4 +90,44 @@ class BatteryPowerCalculationTest {
         finalIsCharging = if (invert) !isChargingNormally else isChargingNormally
         assertTrue(finalIsCharging)
     }
+
+    @Test
+    fun testUnitToggling_powerAndCurrent() {
+        val chargingSample = BatteryReader.Sample(
+            powerW = 33.5,
+            currentMa = 3500,
+            voltageMv = 9571,
+            level = 88,
+            tempC = 36.2,
+            status = "Charging",
+            isCharging = true,
+            source = "root"
+        )
+        // 有单位 vs 无单位
+        assertEquals("+33.5W", chargingSample.powerText(showUnit = true))
+        assertEquals("+33.5", chargingSample.powerText(showUnit = false))
+        assertEquals("+3.50A", chargingSample.currentText(showUnit = true))
+        assertEquals("+3.50", chargingSample.currentText(showUnit = false))
+        assertEquals("9.57V", chargingSample.voltageText(showUnit = true))
+        assertEquals("9.57", chargingSample.voltageText(showUnit = false))
+        assertEquals("36.2°C", chargingSample.tempText(showUnit = true))
+        assertEquals("36.2", chargingSample.tempText(showUnit = false))
+        assertEquals("88%", chargingSample.levelText(showUnit = true))
+        assertEquals("88", chargingSample.levelText(showUnit = false))
+
+        val dischargingSample = BatteryReader.Sample(
+            powerW = -2.8,
+            currentMa = -680,
+            voltageMv = 4117,
+            level = 42,
+            tempC = 29.5,
+            status = "Discharging",
+            isCharging = false,
+            source = "system"
+        )
+        assertEquals("-2.80W", dischargingSample.powerText(showUnit = true))
+        assertEquals("-2.80", dischargingSample.powerText(showUnit = false))
+        assertEquals("-680mA", dischargingSample.currentText(showUnit = true))
+        assertEquals("-680", dischargingSample.currentText(showUnit = false))
+    }
 }
