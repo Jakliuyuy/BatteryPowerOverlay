@@ -172,8 +172,8 @@ class MainActivity : AppCompatActivity() {
                 targetTv.setTextColor(SettingsStore.hookTextColor)
             }
 
-            targetTv.translationX = (SettingsStore.hookOffsetX / 4f).coerceIn(-20f, 20f)
-            targetTv.translationY = (SettingsStore.hookOffsetY / 4f).coerceIn(-10f, 10f)
+            targetTv.translationX = (SettingsStore.hookOffsetX / 10f).coerceIn(-25f, 120f)
+            targetTv.translationY = (SettingsStore.hookOffsetY / 6f).coerceIn(-15f, 15f)
         }
     }
 
@@ -371,8 +371,8 @@ class MainActivity : AppCompatActivity() {
             updatePreview()
         }
 
-        // 水平微调
-        binding.sliderHookOffsetX.value = SettingsStore.hookOffsetX.toFloat().coerceIn(-100f, 100f)
+        // 水平微调 (-300px ~ +1300px，支持自由移动到屏幕最右侧)
+        binding.sliderHookOffsetX.value = SettingsStore.hookOffsetX.toFloat().coerceIn(-300f, 1300f)
         binding.tvOffsetXVal.text = "${SettingsStore.hookOffsetX} px"
         binding.sliderHookOffsetX.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
@@ -382,22 +382,50 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.btnOffsetXMinus.setOnClickListener {
-            val v = (SettingsStore.hookOffsetX - 5).coerceIn(-100, 100)
+            val v = (SettingsStore.hookOffsetX - 10).coerceIn(-300, 1300)
             SettingsStore.hookOffsetX = v
             binding.sliderHookOffsetX.value = v.toFloat()
             binding.tvOffsetXVal.text = "$v px"
             updatePreview()
         }
         binding.btnOffsetXPlus.setOnClickListener {
-            val v = (SettingsStore.hookOffsetX + 5).coerceIn(-100, 100)
+            val v = (SettingsStore.hookOffsetX + 10).coerceIn(-300, 1300)
+            SettingsStore.hookOffsetX = v
+            binding.sliderHookOffsetX.value = v.toFloat()
+            binding.tvOffsetXVal.text = "$v px"
+            updatePreview()
+        }
+        binding.btnOffsetXZero.setOnClickListener {
+            SettingsStore.hookOffsetX = 0
+            binding.sliderHookOffsetX.value = 0f
+            binding.tvOffsetXVal.text = "0 px"
+            updatePreview()
+        }
+
+        // 水平预设快捷跳转
+        binding.btnPresetClock.setOnClickListener {
+            SettingsStore.hookOffsetX = 0
+            binding.sliderHookOffsetX.value = 0f
+            binding.tvOffsetXVal.text = "0 px"
+            updatePreview()
+        }
+        binding.btnPresetCenter.setOnClickListener {
+            val v = 500
+            SettingsStore.hookOffsetX = v
+            binding.sliderHookOffsetX.value = v.toFloat()
+            binding.tvOffsetXVal.text = "$v px"
+            updatePreview()
+        }
+        binding.btnPresetRight.setOnClickListener {
+            val v = 1000
             SettingsStore.hookOffsetX = v
             binding.sliderHookOffsetX.value = v.toFloat()
             binding.tvOffsetXVal.text = "$v px"
             updatePreview()
         }
 
-        // 垂直微调
-        binding.sliderHookOffsetY.value = SettingsStore.hookOffsetY.toFloat().coerceIn(-60f, 60f)
+        // 垂直微调 (-120px ~ +120px)
+        binding.sliderHookOffsetY.value = SettingsStore.hookOffsetY.toFloat().coerceIn(-120f, 120f)
         binding.tvOffsetYVal.text = "${SettingsStore.hookOffsetY} px"
         binding.sliderHookOffsetY.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {
@@ -407,17 +435,23 @@ class MainActivity : AppCompatActivity() {
             }
         }
         binding.btnOffsetYMinus.setOnClickListener {
-            val v = (SettingsStore.hookOffsetY - 2).coerceIn(-60, 60)
+            val v = (SettingsStore.hookOffsetY - 5).coerceIn(-120, 120)
             SettingsStore.hookOffsetY = v
             binding.sliderHookOffsetY.value = v.toFloat()
             binding.tvOffsetYVal.text = "$v px"
             updatePreview()
         }
         binding.btnOffsetYPlus.setOnClickListener {
-            val v = (SettingsStore.hookOffsetY + 2).coerceIn(-60, 60)
+            val v = (SettingsStore.hookOffsetY + 5).coerceIn(-120, 120)
             SettingsStore.hookOffsetY = v
             binding.sliderHookOffsetY.value = v.toFloat()
             binding.tvOffsetYVal.text = "$v px"
+            updatePreview()
+        }
+        binding.btnOffsetYZero.setOnClickListener {
+            SettingsStore.hookOffsetY = 0
+            binding.sliderHookOffsetY.value = 0f
+            binding.tvOffsetYVal.text = "0 px"
             updatePreview()
         }
 
@@ -444,8 +478,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 状态栏字号
-        binding.sliderHookSize.value = SettingsStore.hookTextSizeSp.coerceIn(8f, 20f)
+        // 状态栏字号自适应系统时钟
+        binding.swHookFollowClockSize.isChecked = SettingsStore.hookFollowClockSize
+        binding.layoutHookCustomSize.visibility = if (SettingsStore.hookFollowClockSize) View.GONE else View.VISIBLE
+        binding.swHookFollowClockSize.setOnCheckedChangeListener { _, checked ->
+            SettingsStore.hookFollowClockSize = checked
+            binding.layoutHookCustomSize.visibility = if (checked) View.GONE else View.VISIBLE
+            updatePreview()
+        }
+
+        // 自定义状态栏字号滑块
+        binding.sliderHookSize.value = SettingsStore.hookTextSizeSp.coerceIn(8f, 24f)
         binding.tvHookSizeVal.text = "${SettingsStore.hookTextSizeSp.toInt()}sp"
         binding.sliderHookSize.addOnChangeListener { _, value, fromUser ->
             if (fromUser) {

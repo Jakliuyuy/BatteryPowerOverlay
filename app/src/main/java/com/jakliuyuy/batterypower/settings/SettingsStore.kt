@@ -186,8 +186,16 @@ object SettingsStore {
             notifyHookUpdate()
         }
 
+    // 是否跟随系统时钟字号（默认开启，1:1 像素级拟合 ColorOS 17）
+    var hookFollowClockSize: Boolean
+        get() = sp(AppContext.get()).getBoolean("hook_follow_clock_size", true)
+        set(v) {
+            getEditor().putBoolean("hook_follow_clock_size", v).commit()
+            notifyHookUpdate()
+        }
+
     var hookTextSizeSp: Float
-        get() = sp(AppContext.get()).getFloat("hook_text_size", 11f)
+        get() = sp(AppContext.get()).getFloat("hook_text_size", 13f)
         set(v) {
             getEditor().putFloat("hook_text_size", v).commit()
             notifyHookUpdate()

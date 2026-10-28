@@ -835,7 +835,7 @@
                             android:layout_width="44dp"
                             android:layout_height="40dp"
                             android:padding="0dp"
-                            android:text="-5"
+                            android:text="-10"
                             android:textSize="12sp" />
 
                         <com.google.android.material.slider.Slider
@@ -843,8 +843,8 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:valueFrom="-100"
-                            android:valueTo="100"
+                            android:valueFrom="-300"
+                            android:valueTo="1300"
                             android:stepSize="1" />
 
                         <com.google.android.material.button.MaterialButton
@@ -853,19 +853,75 @@
                             android:layout_width="44dp"
                             android:layout_height="40dp"
                             android:padding="0dp"
-                            android:text="+5"
+                            android:text="+10"
                             android:textSize="12sp" />
                     </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/tv_offset_x_val"
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_gravity="center_horizontal"
-                        android:text="0 px"
-                        android:textColor="@color/primary"
-                        android:textSize="12sp"
-                        android:textStyle="bold" />
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/tv_offset_x_val"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0 px"
+                            android:textColor="@color/primary"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_offset_x_zero"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="32dp"
+                            android:layout_marginStart="8dp"
+                            android:text="归零"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <!-- 水平预设快捷跳转 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_preset_clock"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="34dp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="0dp"
+                            android:text="贴靠时钟 (0px)"
+                            android:textSize="11sp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_preset_center"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="34dp"
+                            android:layout_marginStart="6dp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="0dp"
+                            android:text="屏幕居中"
+                            android:textSize="11sp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_preset_right"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="34dp"
+                            android:layout_marginStart="6dp"
+                            android:paddingHorizontal="10dp"
+                            android:paddingVertical="0dp"
+                            android:text="状态栏最右"
+                            android:textSize="11sp" />
+                    </LinearLayout>
 
                     <!-- 垂直偏移 (滑块 + 微调步进按钮) -->
                     <TextView
@@ -890,7 +946,7 @@
                             android:layout_width="44dp"
                             android:layout_height="40dp"
                             android:padding="0dp"
-                            android:text="-2"
+                            android:text="-5"
                             android:textSize="12sp" />
 
                         <com.google.android.material.slider.Slider
@@ -898,8 +954,8 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:valueFrom="-60"
-                            android:valueTo="60"
+                            android:valueFrom="-120"
+                            android:valueTo="120"
                             android:stepSize="1" />
 
                         <com.google.android.material.button.MaterialButton
@@ -908,19 +964,35 @@
                             android:layout_width="44dp"
                             android:layout_height="40dp"
                             android:padding="0dp"
-                            android:text="+2"
+                            android:text="+5"
                             android:textSize="12sp" />
                     </LinearLayout>
 
-                    <TextView
-                        android:id="@+id/tv_offset_y_val"
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_gravity="center_horizontal"
-                        android:text="0 px"
-                        android:textColor="@color/primary"
-                        android:textSize="12sp"
-                        android:textStyle="bold" />
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/tv_offset_y_val"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0 px"
+                            android:textColor="@color/primary"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_offset_y_zero"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="32dp"
+                            android:layout_marginStart="8dp"
+                            android:text="归零"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
 
                     <!-- 状态栏颜色自适应 -->
                     <LinearLayout
@@ -990,18 +1062,56 @@
                             android:textSize="12sp" />
                     </LinearLayout>
 
-                    <!-- 状态栏字号 -->
+                    <!-- 状态栏字号自适应开关 -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="14dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="字号自动契合系统时钟"
+                                android:textColor="@color/text_primary"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:text="1:1 动态克隆系统时钟字号与基线（推荐）"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/sw_hook_follow_clock_size"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <!-- 自定义状态栏字号 -->
+                    <LinearLayout
+                        android:id="@+id/layout_hook_custom_size"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="状态栏字号"
+                            android:text="自定义字号"
                             android:textColor="@color/text_secondary"
                             android:textSize="13sp" />
 
@@ -1010,7 +1120,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="8dp"
-                            android:text="11sp"
+                            android:text="14sp"
                             android:textColor="@color/primary"
                             android:textSize="13sp"
                             android:textStyle="bold" />
@@ -1022,7 +1132,7 @@
                             android:layout_marginStart="12dp"
                             android:layout_weight="1"
                             android:valueFrom="8"
-                            android:valueTo="20"
+                            android:valueTo="24"
                             android:stepSize="1" />
                     </LinearLayout>
 

@@ -70,6 +70,7 @@ class ConfigProvider : ContentProvider() {
             "hook_offset_y",
             "hook_avoid",
             "hook_adapt_color",
+            "hook_follow_clock_size",
             "hook_text_color",
             "hook_text_size",
             "hook_show_power",

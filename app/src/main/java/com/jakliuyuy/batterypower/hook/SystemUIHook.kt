@@ -125,7 +125,7 @@ object SystemUIHook {
             tv.text = readSystemPower(ctx, freshCfg)
         }
 
-        // 实时时钟颜色与字体自适应守护
+        // 实时时钟颜色与字体自适应守护（深浅色模式秒级自适应）
         val preDrawListener = ViewTreeObserver.OnPreDrawListener {
             if (!tv.isAttachedToWindow || !clock.isAttachedToWindow) return@OnPreDrawListener true
             if (clock is TextView) {
@@ -133,11 +133,7 @@ object SystemUIHook {
                 val cfg = ConfigBridge.query(ctx)
                 val adapt = ConfigBridge.boolOf(cfg, "hook_adapt_color", true)
                 if (adapt) {
-                    if (clock.textColors != null && tv.textColors != clock.textColors) {
-                        tv.setTextColor(clock.textColors)
-                    } else if (tv.currentTextColor != clock.currentTextColor) {
-                        tv.setTextColor(clock.currentTextColor)
-                    }
+                    syncClockColors(tv, clock)
                 }
             }
             true
@@ -193,23 +189,22 @@ object SystemUIHook {
             tv.visibility = View.VISIBLE
         }
 
-        // 字体与字号克隆
+        // 字体与字号克隆（支持跟随系统时钟等大）
         cloneClockTypography(tv, clock)
+        val followClockSize = ConfigBridge.boolOf(cfg, "hook_follow_clock_size", true)
         val customTextSize = ConfigBridge.floatOf(cfg, "hook_text_size", 0f)
-        if (customTextSize <= 0f && clock is TextView && clock.textSize > 0f) {
+        if (followClockSize && clock is TextView && clock.textSize > 0f) {
             tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, clock.textSize)
         } else if (customTextSize > 0f) {
             tv.textSize = customTextSize
+        } else if (clock is TextView && clock.textSize > 0f) {
+            tv.setTextSize(TypedValue.COMPLEX_UNIT_PX, clock.textSize)
         }
 
         // 颜色自适应
         val adaptColor = ConfigBridge.boolOf(cfg, "hook_adapt_color", true)
         if (adaptColor && clock is TextView) {
-            if (clock.textColors != null) {
-                tv.setTextColor(clock.textColors)
-            } else {
-                tv.setTextColor(clock.currentTextColor)
-            }
+            syncClockColors(tv, clock)
         } else {
             val customColor = ConfigBridge.intOf(cfg, "hook_text_color", Color.WHITE)
             tv.setTextColor(customColor)
@@ -239,6 +234,16 @@ object SystemUIHook {
                 rootFrame.addView(tv, lp)
             }
 
+            // 精准预测宽高，避免布局完成前出现 0 宽偏移
+            if (tv.width == 0 || tv.height == 0) {
+                tv.measure(
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                )
+            }
+            val tvW = if (tv.width > 0) tv.width else tv.measuredWidth
+            val tvH = if (tv.height > 0) tv.height else tv.measuredHeight
+
             // 计算 clock 在 rootFrame 坐标系中的位置
             val rootLoc = IntArray(2)
             val clockLoc = IntArray(2)
@@ -250,13 +255,13 @@ object SystemUIHook {
 
             val targetX = if (side == 1) {
                 // 时钟左侧悬浮
-                clockXInRoot - tv.width - dp(ctx, 4) + ox
+                clockXInRoot - tvW - dp(ctx, 4) + ox
             } else {
                 // 时钟右侧悬浮（覆盖在通知图标层上方）
                 clockXInRoot + clock.width + dp(ctx, 4) + ox
             }
 
-            val targetY = clockYInRoot + (clock.height - tv.height) / 2 + oy
+            val targetY = clockYInRoot + (clock.height - tvH) / 2 + oy
 
             tv.translationX = targetX.toFloat()
             tv.translationY = targetY.toFloat()
@@ -359,20 +364,42 @@ object SystemUIHook {
         return lastFrame
     }
 
-    /** 1:1 克隆时钟字体与排版特征 */
+    /** 1:1 像素级拟合 ColorOS 17 时钟字体与排版特征 */
     private fun cloneClockTypography(tv: TextView, clock: View) {
         if (clock !is TextView) return
         try {
-            if (tv.typeface != clock.typeface) {
-                tv.typeface = clock.typeface
+            val tf = clock.typeface ?: clock.paint.typeface
+            if (tf != null && tv.typeface != tf) {
+                tv.typeface = tf
             }
             tv.paint.isFakeBoldText = clock.paint.isFakeBoldText
+            if (tf?.isBold == true) {
+                tv.paint.isFakeBoldText = true
+            }
             tv.paintFlags = clock.paintFlags
             tv.letterSpacing = clock.letterSpacing
             tv.includeFontPadding = clock.includeFontPadding
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 tv.fontFeatureSettings = clock.fontFeatureSettings
             }
+            tv.paint.isAntiAlias = true
+            tv.paint.isSubpixelText = true
+        } catch (_: Exception) {
+        }
+    }
+
+    /** 实时同步时钟颜色与透明度，深浅色模式秒级自适应 */
+    private fun syncClockColors(tv: TextView, clock: TextView) {
+        try {
+            if (clock.textColors != null && tv.textColors != clock.textColors) {
+                tv.setTextColor(clock.textColors)
+            } else {
+                val c = clock.currentTextColor
+                if (c != 0 && tv.currentTextColor != c) {
+                    tv.setTextColor(c)
+                }
+            }
+            tv.alpha = clock.alpha
         } catch (_: Exception) {
         }
     }
