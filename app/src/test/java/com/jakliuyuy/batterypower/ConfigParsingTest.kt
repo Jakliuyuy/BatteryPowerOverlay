@@ -55,4 +55,26 @@ class ConfigParsingTest {
         assertEquals(12f, ConfigBridge.floatOf(badConfig, "hook_text_size", 12f), 0.01f)
         assertTrue(ConfigBridge.boolOf(badConfig, "hook_enabled", true))
     }
+
+    @Test
+    fun testGlobalRefreshIntervals() {
+        // 测试全局刷新率支持的 5 档预设：500, 1000, 1500, 2000, 3000
+        val intervals = listOf(500L, 1000L, 1500L, 2000L, 3000L)
+        for (ms in intervals) {
+            val config = mapOf("refresh_ms" to ms.toString(), "hook_refresh_ms" to ms.toString())
+            val parsedHook = ConfigBridge.longOf(config, "hook_refresh_ms", 1000L)
+            val parsedOverlay = ConfigBridge.longOf(config, "refresh_ms", 1000L)
+            assertEquals(ms, parsedHook)
+            assertEquals(ms, parsedOverlay)
+        }
+
+        // 测试 refresh_ms 回退链
+        val hookOnly = mapOf("hook_refresh_ms" to "1500")
+        val refreshMsFromHook = ConfigBridge.longOf(hookOnly, "hook_refresh_ms", ConfigBridge.longOf(hookOnly, "refresh_ms", 1000L))
+        assertEquals(1500L, refreshMsFromHook)
+
+        val overlayOnly = mapOf("refresh_ms" to "2000")
+        val refreshMsFromOverlay = ConfigBridge.longOf(overlayOnly, "hook_refresh_ms", ConfigBridge.longOf(overlayOnly, "refresh_ms", 1000L))
+        assertEquals(2000L, refreshMsFromOverlay)
+    }
 }

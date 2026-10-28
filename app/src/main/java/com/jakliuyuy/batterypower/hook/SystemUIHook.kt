@@ -154,7 +154,7 @@ object SystemUIHook {
                 applyLayerLayout(tv, clock, rawParent, rootFrame, cfg)
                 tv.text = readSystemPower(ctx, cfg)
 
-                val refreshMs = ConfigBridge.longOf(cfg, "hook_refresh_ms", 1000L).coerceIn(500, 5000)
+                val refreshMs = ConfigBridge.longOf(cfg, "hook_refresh_ms", ConfigBridge.longOf(cfg, "refresh_ms", 1000L)).coerceIn(300, 5000)
                 handler.postDelayed(this, refreshMs)
             }
         }

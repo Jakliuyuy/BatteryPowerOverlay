@@ -20,15 +20,31 @@
             app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
             app:titleTextColor="@color/text_primary">
 
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_open_diag"
-                style="@style/Widget.Material3.Button.TonalButton"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="end"
-                android:layout_marginEnd="16dp"
-                android:text="底层诊断"
-                android:textSize="13sp" />
+                android:layout_marginEnd="12dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_quick_restart"
+                    style="@style/Widget.Material3.Button.IconButton"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:contentDescription="重启 SystemUI"
+                    app:icon="@drawable/ic_menu_refresh"
+                    app:iconTint="@color/text_secondary" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_open_diag"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:text="底层诊断"
+                    android:textSize="12sp" />
+            </LinearLayout>
         </com.google.android.material.appbar.MaterialToolbar>
     </com.google.android.material.appbar.AppBarLayout>
 
@@ -97,7 +113,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="10dp"
                         android:text="+0.00 W"
                         android:textColor="@color/charging_green"
                         android:textSize="44sp"
@@ -117,7 +133,7 @@
                     <GridLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="18dp"
+                        android:layout_marginTop="16dp"
                         android:columnCount="2"
                         android:rowCount="2">
 
@@ -129,12 +145,14 @@
                             android:background="@drawable/bg_stat_item"
                             android:orientation="vertical"
                             android:padding="12dp">
+
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="实时电流"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="11sp" />
+
                             <TextView
                                 android:id="@+id/tv_live_current"
                                 android:layout_width="wrap_content"
@@ -142,7 +160,7 @@
                                 android:layout_marginTop="2dp"
                                 android:text="0 mA"
                                 android:textColor="@color/text_primary"
-                                android:textSize="17sp"
+                                android:textSize="16sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -154,12 +172,14 @@
                             android:background="@drawable/bg_stat_item"
                             android:orientation="vertical"
                             android:padding="12dp">
+
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="电池电压"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="11sp" />
+
                             <TextView
                                 android:id="@+id/tv_live_voltage"
                                 android:layout_width="wrap_content"
@@ -167,7 +187,7 @@
                                 android:layout_marginTop="2dp"
                                 android:text="0.00 V"
                                 android:textColor="@color/text_primary"
-                                android:textSize="17sp"
+                                android:textSize="16sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -179,20 +199,22 @@
                             android:background="@drawable/bg_stat_item"
                             android:orientation="vertical"
                             android:padding="12dp">
+
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="剩余电量"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="11sp" />
+
                             <TextView
                                 android:id="@+id/tv_live_level"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="2dp"
-                                android:text="0 %"
+                                android:text="0%"
                                 android:textColor="@color/text_primary"
-                                android:textSize="17sp"
+                                android:textSize="16sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
 
@@ -204,33 +226,36 @@
                             android:background="@drawable/bg_stat_item"
                             android:orientation="vertical"
                             android:padding="12dp">
+
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="电池温度"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="11sp" />
+
                             <TextView
                                 android:id="@+id/tv_live_temp"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="2dp"
-                                android:text="0.0 °C"
+                                android:text="0.0°C"
                                 android:textColor="@color/text_primary"
-                                android:textSize="17sp"
+                                android:textSize="16sp"
                                 android:textStyle="bold" />
                         </LinearLayout>
                     </GridLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 2. 实时效果模拟视窗卡片 (所见即所得) -->
+            <!-- 2. 所见即所得模拟预览视窗 -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_preview"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="12dp"
                 app:cardBackgroundColor="@color/surface_card"
-                app:cardCornerRadius="20dp"
+                app:cardCornerRadius="16dp"
                 app:cardElevation="1dp"
                 app:strokeColor="@color/card_stroke"
                 app:strokeWidth="1dp">
@@ -239,1067 +264,385 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="18dp">
+                    android:padding="16dp">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="所见即所得 · 实时效果预览"
+                        android:text="当前视觉效果模拟"
                         android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
 
-                    <!-- 模拟手机顶部状态栏视窗 -->
+                    <!-- 悬浮窗微缩视窗 -->
                     <FrameLayout
                         android:layout_width="match_parent"
-                        android:layout_height="72dp"
-                        android:layout_marginTop="12dp"
-                        android:background="@drawable/bg_statusbar_preview"
-                        android:paddingHorizontal="16dp">
+                        android:layout_height="56dp"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/bg_stat_item">
 
-                        <!-- 模拟状态栏时钟与内嵌文本 -->
-                        <LinearLayout
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="start|center_vertical"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal">
-
-                            <TextView
-                                android:id="@+id/tv_preview_clock_left"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginEnd="6dp"
-                                android:text="-18.5W"
-                                android:textColor="@color/primary"
-                                android:textSize="12sp"
-                                android:textStyle="bold"
-                                android:visibility="gone" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="09:41"
-                                android:textColor="@color/text_primary"
-                                android:textSize="14sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:id="@+id/tv_preview_clock_right"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="6dp"
-                                android:text="-18.5W"
-                                android:textColor="@color/primary"
-                                android:textSize="12sp"
-                                android:textStyle="bold" />
-                        </LinearLayout>
-
-                        <!-- 模拟悬浮窗微缩胶囊 -->
                         <TextView
                             android:id="@+id/tv_preview_overlay"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_gravity="end|center_vertical"
-                            android:background="@drawable/bg_capsule_dark"
-                            android:paddingHorizontal="10dp"
-                            android:paddingVertical="4dp"
-                            android:text="-18.5W 4200mA"
+                            android:layout_gravity="center"
+                            android:gravity="center"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="6dp"
+                            android:text="+24.8W  5200mA  85%"
                             android:textColor="#00E676"
-                            android:textSize="12sp" />
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
                     </FrameLayout>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
 
-            <!-- 3. 桌面悬浮窗模式卡片 -->
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                app:cardBackgroundColor="@color/surface_card"
-                app:cardCornerRadius="20dp"
-                app:cardElevation="1dp"
-                app:strokeColor="@color/card_stroke"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
-
+                    <!-- 状态栏微缩视窗 -->
                     <LinearLayout
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="桌面悬浮窗模式"
-                                android:textColor="@color/text_primary"
-                                android:textSize="16sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="全局随屏悬浮，支持手势拖动与位置记忆"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/sw_overlay"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginVertical="16dp"
-                        android:background="@color/card_stroke" />
-
-                    <!-- 位置交互工具条 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_overlay_lock"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="锁定位置"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_overlay_reset"
-                            style="@style/Widget.Material3.Button.TonalButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
-                            android:layout_weight="1"
-                            android:text="居中复位"
-                            android:textSize="12sp" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="屏幕边缘自动吸附"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp" />
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/sw_overlay_snap"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
+                        android:layout_height="40dp"
                         android:layout_marginTop="8dp"
+                        android:background="@drawable/bg_statusbar_preview"
                         android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        android:paddingHorizontal="12dp">
 
                         <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="手机开机自启动悬浮窗"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp" />
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/sw_overlay_boot"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <!-- 外观胶囊风格 -->
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:text="胶囊外观风格"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <com.google.android.material.button.MaterialButtonToggleGroup
-                        android:id="@+id/toggle_style"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        app:singleSelection="true">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_style_frosted"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="毛玻璃"
-                            android:textSize="11sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_style_dark"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="深灰"
-                            android:textSize="11sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_style_light"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="雪白"
-                            android:textSize="11sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_style_outline"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="描边"
-                            android:textSize="11sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_style_transparent"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="全透"
-                            android:textSize="11sp" />
-                    </com.google.android.material.button.MaterialButtonToggleGroup>
-
-                    <!-- 显示指标项 Chips -->
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:text="悬浮窗显示项"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <com.google.android.material.chip.ChipGroup
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp">
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_power"
-                            style="@style/Widget.Material3.Chip.Filter"
+                            android:id="@+id/tv_preview_clock_left"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="功率 (W)" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_current"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="电流 (mA)" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_voltage"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="电压 (V)" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_level"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="电量 (%)" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_temp"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="温度 (°C)" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_unit"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="显示单位" />
-                    </com.google.android.material.chip.ChipGroup>
-
-                    <!-- 字号调节滑块 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                            android:layout_marginEnd="6dp"
+                            android:text="+24.8W"
+                            android:textColor="@color/text_primary"
+                            android:textSize="11sp"
+                            android:visibility="gone" />
 
                         <TextView
+                            android:id="@+id/tv_preview_clock"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="字体大小"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp" />
-
-                        <TextView
-                            android:id="@+id/tv_text_size_val"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
-                            android:text="12sp"
-                            android:textColor="@color/primary"
-                            android:textSize="13sp"
+                            android:text="14:30"
+                            android:textColor="@color/text_primary"
+                            android:textSize="14sp"
                             android:textStyle="bold" />
 
-                        <com.google.android.material.slider.Slider
-                            android:id="@+id/slider_text_size"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="12dp"
-                            android:layout_weight="1"
-                            android:valueFrom="8"
-                            android:valueTo="28"
-                            android:stepSize="1" />
-                    </LinearLayout>
-
-                    <!-- 文字颜色 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
                         <TextView
-                            android:layout_width="0dp"
+                            android:id="@+id/tv_preview_clock_right"
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="文字颜色"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp" />
+                            android:layout_marginStart="6dp"
+                            android:text="+24.8W 85%"
+                            android:textColor="@color/text_primary"
+                            android:textSize="11sp" />
 
                         <View
-                            android:id="@+id/view_overlay_color_preview"
-                            android:layout_width="28dp"
-                            android:layout_height="28dp"
-                            android:layout_marginEnd="10dp"
-                            android:background="@drawable/bg_color_circle_preview" />
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_overlay_color"
-                            style="@style/Widget.Material3.Button.TonalButton"
+                        <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="调色板"
-                            android:textSize="12sp" />
+                            android:text="5G  🔋85%"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="11sp" />
                     </LinearLayout>
-
-                    <!-- 刷新频率 -->
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:text="刷新频率"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <com.google.android.material.button.MaterialButtonToggleGroup
-                        android:id="@+id/toggle_refresh_ms"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        app:singleSelection="true">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_refresh_500"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="0.5 秒"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_refresh_1000"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="1.0 秒"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_refresh_2000"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="2.0 秒"
-                            android:textSize="12sp" />
-                    </com.google.android.material.button.MaterialButtonToggleGroup>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 4. 状态栏 Hook 模式卡片 (LSPosed 模块) -->
+            <!-- 3. 功能主菜单标题 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="8dp"
+                android:text="功能管理菜单"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <!-- 主菜单 1: 桌面悬浮窗管理 -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/menu_card_overlay"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:clickable="true"
+                android:focusable="true"
                 app:cardBackgroundColor="@color/surface_card"
-                app:cardCornerRadius="20dp"
+                app:cardCornerRadius="16dp"
                 app:cardElevation="1dp"
+                app:rippleColor="@color/primary_container"
                 app:strokeColor="@color/card_stroke"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="16dp">
+
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_menu_icon">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_menu_overlay" />
+                    </FrameLayout>
 
                     <LinearLayout
-                        android:layout_width="match_parent"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="状态栏 Hook 模式"
-                                android:textColor="@color/text_primary"
-                                android:textSize="16sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="LSPosed 状态栏原生同级内嵌，手机重启零漂移"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/sw_hook"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:layout_marginVertical="16dp"
-                        android:background="@color/card_stroke" />
-
-                    <!-- 状态栏图层模式选择（二选一） -->
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="状态栏图层模式 (二选一)"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tv_hook_layer_desc"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
-                        android:text="覆盖图层：悬浮在通知上方，不挤占任何通知图标空间（推荐）"
-                        android:textColor="@color/text_tertiary"
-                        android:textSize="11sp" />
-
-                    <com.google.android.material.button.MaterialButtonToggleGroup
-                        android:id="@+id/toggle_hook_layer"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:layout_marginBottom="14dp"
-                        app:singleSelection="true">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_hook_layer_overlay"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="覆盖图层 (不挤占通知)"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_hook_layer_inline"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="并排图层 (流式占用空间)"
-                            android:textSize="12sp" />
-                    </com.google.android.material.button.MaterialButtonToggleGroup>
-
-                    <!-- 锚点选择 (时钟右侧 / 时钟左侧) -->
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="内嵌排版方位"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <com.google.android.material.button.MaterialButtonToggleGroup
-                        android:id="@+id/toggle_hook_side"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        app:singleSelection="true">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_hook_side_right"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="时钟右侧 (推荐)"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_hook_side_left"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="时钟左侧"
-                            android:textSize="12sp" />
-                    </com.google.android.material.button.MaterialButtonToggleGroup>
-
-                    <!-- 水平偏移 (滑块 + 微调步进按钮) -->
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:text="水平位置微调 (Translation X)"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_offset_x_minus"
-                            style="@style/Widget.Material3.Button.TonalButton"
-                            android:layout_width="44dp"
-                            android:layout_height="40dp"
-                            android:padding="0dp"
-                            android:text="-10"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.slider.Slider
-                            android:id="@+id/slider_hook_offset_x"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:valueFrom="-300"
-                            android:valueTo="1300"
-                            android:stepSize="1" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_offset_x_plus"
-                            style="@style/Widget.Material3.Button.TonalButton"
-                            android:layout_width="44dp"
-                            android:layout_height="40dp"
-                            android:padding="0dp"
-                            android:text="+10"
-                            android:textSize="12sp" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:orientation="horizontal">
+                        android:layout_marginStart="14dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
 
                         <TextView
-                            android:id="@+id/tv_offset_x_val"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="0 px"
-                            android:textColor="@color/primary"
-                            android:textSize="12sp"
+                            android:text="桌面悬浮窗"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
                             android:textStyle="bold" />
 
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_offset_x_zero"
-                            style="@style/Widget.Material3.Button.TextButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="32dp"
-                            android:layout_marginStart="8dp"
-                            android:text="归零"
-                            android:textSize="11sp" />
-                    </LinearLayout>
-
-                    <!-- 水平预设快捷跳转 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:gravity="center"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_preset_clock"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="34dp"
-                            android:paddingHorizontal="10dp"
-                            android:paddingVertical="0dp"
-                            android:text="贴靠时钟 (0px)"
-                            android:textSize="11sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_preset_center"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="34dp"
-                            android:layout_marginStart="6dp"
-                            android:paddingHorizontal="10dp"
-                            android:paddingVertical="0dp"
-                            android:text="屏幕居中"
-                            android:textSize="11sp" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_preset_right"
-                            style="@style/Widget.Material3.Button.OutlinedButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="34dp"
-                            android:layout_marginStart="6dp"
-                            android:paddingHorizontal="10dp"
-                            android:paddingVertical="0dp"
-                            android:text="状态栏最右"
-                            android:textSize="11sp" />
-                    </LinearLayout>
-
-                    <!-- 垂直偏移 (滑块 + 微调步进按钮) -->
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:text="垂直位置微调 (Translation Y)"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_offset_y_minus"
-                            style="@style/Widget.Material3.Button.TonalButton"
-                            android:layout_width="44dp"
-                            android:layout_height="40dp"
-                            android:padding="0dp"
-                            android:text="-5"
-                            android:textSize="12sp" />
-
-                        <com.google.android.material.slider.Slider
-                            android:id="@+id/slider_hook_offset_y"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:valueFrom="-120"
-                            android:valueTo="120"
-                            android:stepSize="1" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_offset_y_plus"
-                            style="@style/Widget.Material3.Button.TonalButton"
-                            android:layout_width="44dp"
-                            android:layout_height="40dp"
-                            android:padding="0dp"
-                            android:text="+5"
-                            android:textSize="12sp" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:orientation="horizontal">
-
                         <TextView
-                            android:id="@+id/tv_offset_y_val"
+                            android:id="@+id/tv_menu_overlay_summary"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="0 px"
-                            android:textColor="@color/primary"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_offset_y_zero"
-                            style="@style/Widget.Material3.Button.TextButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="32dp"
-                            android:layout_marginStart="8dp"
-                            android:text="归零"
-                            android:textSize="11sp" />
-                    </LinearLayout>
-
-
-                    <!-- 状态栏颜色自适应 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="文字颜色自动跟随状态栏"
-                                android:textColor="@color/text_primary"
-                                android:textSize="14sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="在亮色/暗色界面自动切换黑白，与时钟浑然一体"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="11sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/sw_hook_adapt_color"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <!-- 自定义颜色 (非自适应模式) -->
-                    <LinearLayout
-                        android:id="@+id/layout_hook_custom_color"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="状态栏固定颜色"
+                            android:layout_marginTop="3dp"
+                            android:text="已开启 · 雾面毛玻璃 · 12sp"
                             android:textColor="@color/text_secondary"
-                            android:textSize="13sp" />
-
-                        <View
-                            android:id="@+id/view_hook_color_preview"
-                            android:layout_width="28dp"
-                            android:layout_height="28dp"
-                            android:layout_marginEnd="10dp"
-                            android:background="@drawable/bg_color_circle_preview" />
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_hook_color"
-                            style="@style/Widget.Material3.Button.TonalButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="调色板"
                             android:textSize="12sp" />
                     </LinearLayout>
 
-                    <!-- 状态栏字号自适应开关 -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="字号自动契合系统时钟"
-                                android:textColor="@color/text_primary"
-                                android:textSize="14sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:text="1:1 动态克隆系统时钟字号与基线（推荐）"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="11sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/sw_hook_follow_clock_size"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <!-- 自定义状态栏字号 -->
-                    <LinearLayout
-                        android:id="@+id/layout_hook_custom_size"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="自定义字号"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="13sp" />
-
-                        <TextView
-                            android:id="@+id/tv_hook_size_val"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
-                            android:text="14sp"
-                            android:textColor="@color/primary"
-                            android:textSize="13sp"
-                            android:textStyle="bold" />
-
-                        <com.google.android.material.slider.Slider
-                            android:id="@+id/slider_hook_size"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="12dp"
-                            android:layout_weight="1"
-                            android:valueFrom="8"
-                            android:valueTo="24"
-                            android:stepSize="1" />
-                    </LinearLayout>
-
-                    <!-- 状态栏显示项 Chips -->
-                    <TextView
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/sw_menu_overlay"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:text="状态栏显示项"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="13sp"
-                        android:textStyle="bold" />
+                        android:layout_marginEnd="6dp" />
 
-                    <com.google.android.material.chip.ChipGroup
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp">
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_hook_power"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="功率" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_hook_current"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="电流" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_hook_voltage"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="电压" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_hook_level"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="电量" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_hook_temp"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="温度" />
-
-                        <com.google.android.material.chip.Chip
-                            android:id="@+id/chip_hook_unit"
-                            style="@style/Widget.Material3.Chip.Filter"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="显示单位 (W/mA)" />
-                    </com.google.android.material.chip.ChipGroup>
-
-                    <!-- 重启 SystemUI 快捷按钮 -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btn_restart_systemui"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="18dp"
-                        android:text="重启 SystemUI (Root 快速生效)"
-                        android:textSize="13sp" />
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_chevron_right" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 5. 高级选项卡片 -->
+            <!-- 主菜单 2: 状态栏 Hook 定制 -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/menu_card_hook"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="10dp"
+                android:clickable="true"
+                android:focusable="true"
                 app:cardBackgroundColor="@color/surface_card"
-                app:cardCornerRadius="20dp"
+                app:cardCornerRadius="16dp"
                 app:cardElevation="1dp"
+                app:rippleColor="@color/primary_container"
                 app:strokeColor="@color/card_stroke"
                 app:strokeWidth="1dp">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="16dp">
 
-                    <TextView
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_menu_icon">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_menu_statusbar" />
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="状态栏 Hook (LSPosed)"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tv_menu_hook_summary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:text="已启用 · 独立覆盖图层 · 时钟右侧"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        android:id="@+id/sw_menu_hook"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="内核与硬件适配"
-                        android:textColor="@color/text_primary"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
+                        android:layout_marginEnd="6dp" />
 
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="充放电符号极性翻转"
-                                android:textColor="@color/text_primary"
-                                android:textSize="14sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="部分机型内核充电为负、放电为正，开启后校正"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="11sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/sw_polarity_invert"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="双电芯功率 ×2 修正"
-                                android:textColor="@color/text_primary"
-                                android:textSize="14sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:text="针对百瓦级串联双电芯机型直读单电芯时翻倍修正"
-                                android:textColor="@color/text_secondary"
-                                android:textSize="11sp" />
-                        </LinearLayout>
-
-                        <com.google.android.material.materialswitch.MaterialSwitch
-                            android:id="@+id/sw_double_cell"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_chevron_right" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
+
+            <!-- 主菜单 3: 全局与刷新频率 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/menu_card_global"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardBackgroundColor="@color/surface_card"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="1dp"
+                app:rippleColor="@color/primary_container"
+                app:strokeColor="@color/card_stroke"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="16dp">
+
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_menu_icon">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_menu_refresh" />
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="全局与刷新频率"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tv_menu_global_summary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:text="全局刷新: 1000ms · 悬浮窗与状态栏同步"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_chevron_right" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 主菜单 4: 硬件适配与诊断 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/menu_card_hardware"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardBackgroundColor="@color/surface_card"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="1dp"
+                app:rippleColor="@color/primary_container"
+                app:strokeColor="@color/card_stroke"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="16dp">
+
+                    <FrameLayout
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
+                        android:background="@drawable/bg_menu_icon">
+
+                        <ImageView
+                            android:layout_width="24dp"
+                            android:layout_height="24dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_menu_hardware" />
+                    </FrameLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="14dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="硬件适配与诊断"
+                            android:textColor="@color/text_primary"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/tv_menu_hardware_summary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="3dp"
+                            android:text="双电芯倍率 · 极性校准 · 内核节点探测"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:src="@drawable/ic_chevron_right" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 底部版本与致谢信息 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="24dp"
+                android:text="动力视窗 v3.2.0 · 现代化 Material 3 架构"
+                android:textColor="@color/text_tertiary"
+                android:textSize="11sp" />
 
         </LinearLayout>
     </androidx.core.widget.NestedScrollView>

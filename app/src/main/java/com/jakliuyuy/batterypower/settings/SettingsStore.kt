@@ -85,10 +85,21 @@ object SettingsStore {
         get() = sp(AppContext.get()).getBoolean("show_temp", false)
         set(v) { getEditor().putBoolean("show_temp", v).commit() }
 
-    // 悬浮窗刷新率
-    var refreshMs: Long
+    // 全局统一刷新率（同时控制桌面悬浮窗与状态栏 Hook 模块）
+    var globalRefreshMs: Long
         get() = sp(AppContext.get()).getLong("refresh_ms", 1000L)
-        set(v) { getEditor().putLong("refresh_ms", v).commit() }
+        set(v) {
+            getEditor()
+                .putLong("refresh_ms", v)
+                .putLong("hook_refresh_ms", v)
+                .commit()
+            notifyHookUpdate()
+        }
+
+    // 悬浮窗刷新率（映射到全局刷新率）
+    var refreshMs: Long
+        get() = globalRefreshMs
+        set(v) { globalRefreshMs = v }
 
     // 悬浮窗字号与文字颜色
     var textSizeSp: Float
@@ -127,12 +138,10 @@ object SettingsStore {
             notifyHookUpdate()
         }
 
+    // 状态栏 Hook 刷新率（映射到全局统一刷新率）
     var hookRefreshMs: Long
-        get() = sp(AppContext.get()).getLong("hook_refresh_ms", 1000L)
-        set(v) {
-            getEditor().putLong("hook_refresh_ms", v).commit()
-            notifyHookUpdate()
-        }
+        get() = globalRefreshMs
+        set(v) { globalRefreshMs = v }
 
     // 图层模式定义：0=独立覆盖图层（悬浮在通知上方，不挤压通知图标），1=并排图层（与时钟流式并列，会占用通知位置）
     const val LAYER_OVERLAY = 0
