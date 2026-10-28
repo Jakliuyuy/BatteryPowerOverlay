@@ -156,6 +156,46 @@ class ConfigParsingTest {
     }
 
     @Test
+    fun testObserverManagement() {
+        var callCount1 = 0
+        var callCount2 = 0
+        val l1: (Map<String, String>) -> Unit = { callCount1++ }
+        val l2: (Map<String, String>) -> Unit = { callCount2++ }
+
+        // 模拟观察者注册与注销
+        ConfigBridge.removeObserver(l1)
+        ConfigBridge.removeObserver(l2)
+
+        val listenersField = ConfigBridge::class.java.getDeclaredField("listeners")
+        listenersField.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val listeners = listenersField.get(ConfigBridge) as java.util.concurrent.CopyOnWriteArrayList<(Map<String, String>) -> Unit>
+
+        val initialSize = listeners.size
+        listeners.add(l1)
+        listeners.add(l2)
+        assertEquals(initialSize + 2, listeners.size)
+
+        // 模拟广播分发
+        for (listener in listeners) {
+            listener(mapOf("test" to "1"))
+        }
+        assertEquals(1, callCount1)
+        assertEquals(1, callCount2)
+
+        // 注销 l1
+        listeners.remove(l1)
+        for (listener in listeners) {
+            listener(mapOf("test" to "2"))
+        }
+        assertEquals(1, callCount1)
+        assertEquals(2, callCount2)
+
+        // 清理
+        listeners.remove(l2)
+    }
+
+    @Test
     fun testAllKeysCompleteness() {
         val requiredKeys = setOf(
             "hook_enabled",

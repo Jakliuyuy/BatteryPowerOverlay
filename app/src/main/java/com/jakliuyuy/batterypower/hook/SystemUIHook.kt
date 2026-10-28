@@ -1,5 +1,6 @@
 package com.jakliuyuy.batterypower.hook
 
+import android.app.KeyguardManager
 import android.content.Context
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -22,6 +23,7 @@ import com.jakliuyuy.batterypower.battery.BatteryReader
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedHelpers
 import de.robv.android.xposed.callbacks.XC_LoadPackage
+import java.lang.ref.WeakReference
 
 /**
  * Hook SystemUI 状态栏时钟，注入实时电池功率监视。
@@ -53,11 +55,22 @@ object SystemUIHook {
     private const val WRAPPER_TAG = "bp_clock_wrapper_tag"
     private const val ELEVATION_TOP = 200f
 
+    // 全局唯一生命周期与调度守护器（彻底杜绝屏幕旋转或多次 attach 导致的 Handler/Runnable 泄漏）
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var activeRefreshRunnable: Runnable? = null
+    private var activeSyncRunnable: Runnable? = null
+    private var activeClockRef: WeakReference<View>? = null
+    private var activeTvRef: WeakReference<TextView>? = null
+    private var activePreDrawListener: ViewTreeObserver.OnPreDrawListener? = null
+    private var activeConfigObserver: ((Map<String, String>) -> Unit)? = null
+    private var cachedClockTypeface: android.graphics.Typeface? = null
+
     fun hook(lpparam: XC_LoadPackage.LoadPackageParam) {
         val clockClass = CANDIDATES.firstNotNullOfOrNull {
             runCatching { XposedHelpers.findClass(it, lpparam.classLoader) }.getOrNull()
         } ?: return
 
+        // 1. Hook onAttachedToWindow 实现挂载与实例交接
         XposedHelpers.findAndHookMethod(
             clockClass,
             "onAttachedToWindow",
@@ -69,6 +82,49 @@ object SystemUIHook {
                 }
             }
         )
+
+        // 2. 毫秒级原生系统可见性拦截（解决不可见时不进入 Draw 导致 OnPreDrawListener 哑火的致命缺陷）
+        val visibilityHook = object : XC_MethodHook() {
+            override fun afterHookedMethod(param: MethodHookParam) {
+                val clock = param.thisObject as? View ?: return
+                if (isStatusBarClock(clock)) {
+                    triggerSyncNow()
+                }
+            }
+        }
+
+        runCatching {
+            XposedHelpers.findAndHookMethod(
+                clockClass,
+                "onVisibilityAggregated",
+                Boolean::class.javaPrimitiveType,
+                visibilityHook
+            )
+        }
+        runCatching {
+            XposedHelpers.findAndHookMethod(
+                clockClass,
+                "onWindowVisibilityChanged",
+                Int::class.javaPrimitiveType,
+                visibilityHook
+            )
+        }
+        runCatching {
+            XposedHelpers.findAndHookMethod(
+                clockClass,
+                "setVisibility",
+                Int::class.javaPrimitiveType,
+                visibilityHook
+            )
+        }
+    }
+
+    private fun triggerSyncNow() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            activeSyncRunnable?.run()
+        } else {
+            mainHandler.post { activeSyncRunnable?.run() }
+        }
     }
 
     /**
@@ -139,69 +195,108 @@ object SystemUIHook {
             }
         }
 
-        // 同步时钟字体风格
+        // 同步并缓存时钟字体风格
         cloneClockTypography(tv, clock)
+        (clock as? TextView)?.typeface?.let { cachedClockTypeface = it }
+
+        // 解绑旧时钟的 PreDraw 监听
+        activePreDrawListener?.let { oldListener ->
+            runCatching {
+                activeClockRef?.get()?.viewTreeObserver?.let { vto ->
+                    if (vto.isAlive) vto.removeOnPreDrawListener(oldListener)
+                }
+            }
+        }
+
+        activeClockRef = WeakReference(clock)
+        activeTvRef = WeakReference(tv)
 
         var lastClockVisible = isClockVisibleOnScreen(clock)
 
         // 核心同步刷新机制：同时维护状态栏文字与全屏沉浸浮层
         val checkSync = Runnable {
-            val cfg = ConfigBridge.query(ctx)
-            val isVis = isClockVisibleOnScreen(clock)
-            val powerText = readSystemPower(ctx, cfg)
+            val currentClock = activeClockRef?.get()
+            val currentTv = activeTvRef?.get()
+            val currentCtx = currentClock?.context ?: ctx
+            val cfg = ConfigBridge.query(currentCtx)
+            val isVis = if (currentClock != null) isClockVisibleOnScreen(currentClock) else false
+            val powerText = readSystemPower(currentCtx, cfg)
 
-            // 1. 状态栏文字排版与更新
-            applyLayerLayout(tv, clock, rawParent, rootFrame, cfg, isVis)
-            tv.text = powerText
+            // 1. 状态栏文字排版与更新（仅当 clock 与 tv 活跃且在树中时）
+            if (currentClock != null && currentTv != null) {
+                val currentRawParent = currentClock.parent as? ViewGroup
+                val currentRootFrame = findStatusBarRoot(currentClock) ?: (currentRawParent as? FrameLayout)
+                if (currentRawParent != null && currentRootFrame != null) {
+                    applyLayerLayout(currentTv, currentClock, currentRawParent, currentRootFrame, cfg, isVis)
+                    currentTv.text = powerText
+                }
+            }
 
             // 2. 全屏沉浸接管浮层状态机
             val hookEnabled = ConfigBridge.boolOf(cfg, "hook_enabled", true)
             val immersiveEnabled = ConfigBridge.boolOf(cfg, "hook_immersive_enabled", false)
-            val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val pm = currentCtx.getSystemService(Context.POWER_SERVICE) as? PowerManager
             val isInteractive = pm?.isInteractive != false
-            val shouldShowImmersive = !isVis && hookEnabled && immersiveEnabled && isInteractive
+            val km = currentCtx.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+            val isLocked = km?.isKeyguardLocked == true
 
-            ImmersiveOverlayManager.update(ctx, powerText, cfg, clock, shouldShowImmersive)
+            // 严防锁屏幽灵浮层：仅在非锁屏、屏幕交互亮屏且状态栏全屏隐藏时触发沉浸浮层
+            val shouldShowImmersive = !isVis && hookEnabled && immersiveEnabled && isInteractive && !isLocked
+
+            ImmersiveOverlayManager.update(currentCtx, powerText, cfg, currentClock, shouldShowImmersive)
             lastClockVisible = isVis
         }
+        activeSyncRunnable = checkSync
 
-        // 首次同步执行
-        checkSync.run()
+        // 毫秒级重绘与排版感知监听
+        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+            val curClock = activeClockRef?.get()
+            if (curClock != null) {
+                val visibleNow = isClockVisibleOnScreen(curClock)
+                if (visibleNow != lastClockVisible) {
+                    lastClockVisible = visibleNow
+                    checkSync.run()
+                }
+            }
+            true
+        }
+        activePreDrawListener = preDrawListener
+        if (clock.viewTreeObserver.isAlive) {
+            clock.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+        }
 
-        // 主轮询循环（生命周期守护）
-        val handler = Handler(Looper.getMainLooper())
+        // 全局唯一主轮询循环管理：清理旧循环，确保任何时刻只有一个任务活跃
+        activeRefreshRunnable?.let { mainHandler.removeCallbacks(it) }
         val refreshRunnable = object : Runnable {
             override fun run() {
                 checkSync.run()
-                val cfg = ConfigBridge.query(ctx)
+                val curClock = activeClockRef?.get()
+                val curCtx = curClock?.context ?: ctx
+                val cfg = ConfigBridge.query(curCtx)
                 val refreshMs = ConfigBridge.longOf(
                     cfg, "hook_refresh_ms",
                     ConfigBridge.longOf(cfg, "refresh_ms", 1000L)
                 ).coerceIn(300, 5000)
-                handler.postDelayed(this, refreshMs)
+                mainHandler.postDelayed(this, refreshMs)
             }
         }
+        activeRefreshRunnable = refreshRunnable
 
-        // 毫秒级重绘与排版感知监听：进入全屏游戏/退出全屏游戏瞬间触发
-        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
-            val visibleNow = isClockVisibleOnScreen(clock)
-            if (visibleNow != lastClockVisible) {
-                checkSync.run()
-            }
-            true
-        }
-        clock.viewTreeObserver.addOnPreDrawListener(preDrawListener)
-
-        // 注册实时配置监听，支持图层模式/左右侧/偏移/沉浸接管参数/颜色热更新
-        ConfigBridge.ensureObserver(ctx) { freshCfg ->
+        // 注册实时配置监听（使用安全列表分发，防止旋转后失效）
+        activeConfigObserver?.let { ConfigBridge.removeObserver(it) }
+        val configObserver: (Map<String, String>) -> Unit = { freshCfg ->
             checkSync.run()
-            handler.removeCallbacks(refreshRunnable)
-            val freshMs = ConfigBridge.longOf(
-                freshCfg, "hook_refresh_ms",
-                ConfigBridge.longOf(freshCfg, "refresh_ms", 1000L)
-            ).coerceIn(300, 5000)
-            handler.postDelayed(refreshRunnable, freshMs)
+            activeRefreshRunnable?.let { r ->
+                mainHandler.removeCallbacks(r)
+                val freshMs = ConfigBridge.longOf(
+                    freshCfg, "hook_refresh_ms",
+                    ConfigBridge.longOf(freshCfg, "refresh_ms", 1000L)
+                ).coerceIn(300, 5000)
+                mainHandler.postDelayed(r, freshMs)
+            }
         }
+        activeConfigObserver = configObserver
+        ConfigBridge.addObserver(ctx, configObserver)
 
         // 息屏/全屏/Attach 恢复监听
         clock.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
@@ -210,16 +305,17 @@ object SystemUIHook {
                     clock.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
                     clock.viewTreeObserver.addOnPreDrawListener(preDrawListener)
                 }
-                handler.removeCallbacks(refreshRunnable)
-                handler.post(refreshRunnable)
+                triggerSyncNow()
             }
 
             override fun onViewDetachedFromWindow(v: View) {
-                checkSync.run()
+                triggerSyncNow()
             }
         })
 
-        handler.post(refreshRunnable)
+        // 首次同步执行与启动轮询
+        checkSync.run()
+        mainHandler.post(refreshRunnable)
     }
 
     /**
@@ -419,7 +515,7 @@ object SystemUIHook {
             ctx: Context,
             powerText: String,
             cfg: Map<String, String>,
-            clock: View,
+            clock: View?,
             show: Boolean
         ) {
             if (Looper.myLooper() != Looper.getMainLooper()) {
@@ -458,6 +554,14 @@ object SystemUIHook {
             val ox = ConfigBridge.intOf(cfg, "hook_immersive_offset_x", 0)
             val oy = ConfigBridge.intOf(cfg, "hook_immersive_offset_y", 0)
 
+            // 左/右偏好注入 16dp 安全边距，防止贴紧屏幕物理边缘被大圆角截断
+            val targetX = when (gravityPref) {
+                0 -> dp(ctx, 16) + ox
+                2 -> dp(ctx, 16) - ox
+                else -> ox
+            }
+            val targetY = oy
+
             val lp = c.layoutParams as? WindowManager.LayoutParams
             if (lp != null) {
                 var changed = false
@@ -465,12 +569,12 @@ object SystemUIHook {
                     lp.gravity = targetGravity
                     changed = true
                 }
-                if (lp.x != ox) {
-                    lp.x = ox
+                if (lp.x != targetX) {
+                    lp.x = targetX
                     changed = true
                 }
-                if (lp.y != oy) {
-                    lp.y = oy
+                if (lp.y != targetY) {
+                    lp.y = targetY
                     changed = true
                 }
                 if (changed) {
@@ -493,111 +597,97 @@ object SystemUIHook {
             }
         }
 
-        private fun ensureView(ctx: Context, clock: View) {
+        private fun ensureView(ctx: Context, clock: View?) {
             if (isAdded && container != null) return
-            runCatching {
-                val windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
-                wm = windowManager
 
-                val root = FrameLayout(ctx)
-                val textV = TextView(ctx).apply {
-                    includeFontPadding = false
-                    paint.isAntiAlias = true
-                    paint.isSubpixelText = true
-                    paint.isFakeBoldText = true
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                }
+            val windowManager = (ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)
+                ?: (ctx.applicationContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)
+                ?: return
+            wm = windowManager
 
-                applyStyle(ctx, textV, 1, clock)
+            val root = FrameLayout(ctx)
+            val textV = TextView(ctx).apply {
+                includeFontPadding = false
+                paint.isAntiAlias = true
+                paint.isSubpixelText = true
+                paint.isFakeBoldText = true
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+            }
 
-                val childLp = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    Gravity.CENTER
+            applyStyle(ctx, textV, 1, clock)
+
+            val childLp = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
+            root.addView(textV, childLp)
+            root.visibility = View.GONE
+
+            // 候选窗口类型梯队：首选 SystemUI 原生 2041，降级至标准顶层 2038 与系统覆盖层
+            val candidateTypes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                listOf(
+                    2041, // TYPE_STATUS_BAR_ADDITIONAL (SystemUI 专属顶层，完美绕过应用覆盖层限制)
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    2006, // TYPE_SYSTEM_OVERLAY
+                    2003  // TYPE_SYSTEM_ALERT
                 )
-                root.addView(textV, childLp)
-                root.visibility = View.GONE
-
-                val lpType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                } else {
-                    @Suppress("DEPRECATION")
+            } else {
+                @Suppress("DEPRECATION")
+                listOf(
+                    2041,
+                    WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY,
                     WindowManager.LayoutParams.TYPE_PHONE
-                }
+                )
+            }
 
-                val lpFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            var lpFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
-                val lp = WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    lpType,
-                    lpFlags,
-                    PixelFormat.TRANSLUCENT
-                ).apply {
-                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                    x = 0
-                    y = 0
-                }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                lpFlags = lpFlags or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+            }
 
-                windowManager.addView(root, lp)
-                container = root
-                tv = textV
-                isAdded = true
-            }.onFailure {
-                // 安全降级：尝试使用 TYPE_STATUS_BAR_ADDITIONAL 备选窗口类型
-                runCatching {
-                    val windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
-                    wm = windowManager
-
-                    val root = FrameLayout(ctx)
-                    val textV = TextView(ctx).apply {
-                        includeFontPadding = false
-                        paint.isAntiAlias = true
-                        paint.isSubpixelText = true
-                        paint.isFakeBoldText = true
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-                        setTextColor(Color.WHITE)
-                        gravity = Gravity.CENTER
-                    }
-                    applyStyle(ctx, textV, 1, clock)
-                    root.addView(textV, FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        Gravity.CENTER
-                    ))
-                    root.visibility = View.GONE
-
-                    val fallbackType = 2041 // TYPE_STATUS_BAR_ADDITIONAL
-                    val lpFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            for (type in candidateTypes) {
+                try {
                     val lp = WindowManager.LayoutParams(
                         WindowManager.LayoutParams.WRAP_CONTENT,
                         WindowManager.LayoutParams.WRAP_CONTENT,
-                        fallbackType,
+                        type,
                         lpFlags,
                         PixelFormat.TRANSLUCENT
                     ).apply {
                         gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                         x = 0
                         y = 0
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            // 关键适配：允许延伸至挖孔/切口区域，杜绝横屏游戏下切口避让导致的水平居中偏位数十像素！
+                            layoutInDisplayCutoutMode =
+                                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                        }
                     }
+
                     windowManager.addView(root, lp)
                     container = root
                     tv = textV
                     isAdded = true
+                    break
+                } catch (_: Throwable) {
+                    // 尝试下一个候选类型
                 }
             }
         }
 
-        private fun applyStyle(ctx: Context, textV: TextView, style: Int, clock: View) {
-            cloneClockTypography(textV, clock)
+        private fun applyStyle(ctx: Context, textV: TextView, style: Int, clock: View?) {
+            if (clock != null) {
+                cloneClockTypography(textV, clock)
+            } else if (cachedClockTypeface != null) {
+                textV.typeface = cachedClockTypeface
+            }
             when (style) {
                 0 -> {
                     // 极简纯文字
