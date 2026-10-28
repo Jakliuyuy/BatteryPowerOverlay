@@ -2,15 +2,19 @@ package com.jakliuyuy.batterypower.hook
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -22,14 +26,20 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage
 /**
  * Hook SystemUI 状态栏时钟，注入实时电池功率监视。
  *
- * 核心升级（满足用户二选一需求）：
+ * 核心架构特性：
  * 1. 模式 A：【独立覆盖图层（默认推荐）】
  *    - 挂载于状态栏顶层 FrameLayout 根容器（elevation=200f），悬浮于通知图层上方。
  *    - 时钟保持原生父级不动，绝对不挤占通知图标物理空间，微调时直接覆盖在通知上方。
  * 2. 模式 B：【并排流式图层】
  *    - 与时钟在同一水平流式包装器内紧密并排，会挤压通知图标位置。
- * 3. 字体 1:1 克隆 ColorOS 17 原生 Typeface（OPlus Sans）、字重、字号与基线。
- * 4. 颜色与深浅模式 0 延迟秒级自适应。
+ * 3. 【横屏与全屏沉浸接管引擎（100% SystemUI 核心进程原生驻留）】
+ *    - 毫秒级检测状态栏显隐切换（进入游戏全屏、全屏视频、测试工具或状态栏沉浸隐藏）。
+ *    - 状态栏可见时：全屏浮层 100% 隐藏，状态栏时钟文字正常显示。
+ *    - 状态栏全屏隐藏时：全屏浮层毫秒级自动浮现在当前屏幕最顶居中（默认）或用户偏好位置。
+ *    - 注入 FLAG_NOT_TOUCHABLE 与 FLAG_NOT_FOCUSABLE：触控操作 100% 穿透至底层游戏，零按键阻挡与误触。
+ *    - 划掉主 App 依然在系统 SystemUI 中永久驻留自适应生效。
+ * 4. 字体 1:1 克隆 ColorOS 17 原生 Typeface（OPlus Sans）、字重、字号与基线。
+ * 5. 颜色与深浅模式 0 延迟秒级自适应。
  */
 object SystemUIHook {
 
@@ -93,6 +103,24 @@ object SystemUIHook {
         }
     }
 
+    /**
+     * 精确检测时钟是否在当前屏幕物理可见
+     */
+    private fun isClockVisibleOnScreen(clock: View): Boolean {
+        if (!clock.isAttachedToWindow) return false
+        if (clock.visibility != View.VISIBLE) return false
+        if (clock.windowVisibility != View.VISIBLE) return false
+        if (!clock.isShown) return false
+
+        // 检测是否被厂商系统移出屏幕可视边界（例如 translationY 移出）
+        val loc = IntArray(2)
+        clock.getLocationOnScreen(loc)
+        if (loc[1] + clock.height <= 0 || loc[0] + clock.width <= 0) {
+            return false
+        }
+        return true
+    }
+
     private fun inject(clock: View) {
         val rawParent = clock.parent as? ViewGroup ?: return
         val rootFrame = findStatusBarRoot(clock) ?: (rawParent as? FrameLayout) ?: return
@@ -114,19 +142,38 @@ object SystemUIHook {
         // 同步时钟字体风格
         cloneClockTypography(tv, clock)
 
-        // 首次渲染与配置
-        val initialCfg = ConfigBridge.query(ctx)
-        applyLayerLayout(tv, clock, rawParent, rootFrame, initialCfg)
-        tv.text = readSystemPower(ctx, initialCfg)
+        var lastClockVisible = isClockVisibleOnScreen(clock)
+
+        // 核心同步刷新机制：同时维护状态栏文字与全屏沉浸浮层
+        val checkSync = Runnable {
+            val cfg = ConfigBridge.query(ctx)
+            val isVis = isClockVisibleOnScreen(clock)
+            val powerText = readSystemPower(ctx, cfg)
+
+            // 1. 状态栏文字排版与更新
+            applyLayerLayout(tv, clock, rawParent, rootFrame, cfg, isVis)
+            tv.text = powerText
+
+            // 2. 全屏沉浸接管浮层状态机
+            val hookEnabled = ConfigBridge.boolOf(cfg, "hook_enabled", true)
+            val immersiveEnabled = ConfigBridge.boolOf(cfg, "hook_immersive_enabled", false)
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val isInteractive = pm?.isInteractive != false
+            val shouldShowImmersive = !isVis && hookEnabled && immersiveEnabled && isInteractive
+
+            ImmersiveOverlayManager.update(ctx, powerText, cfg, clock, shouldShowImmersive)
+            lastClockVisible = isVis
+        }
+
+        // 首次同步执行
+        checkSync.run()
 
         // 主轮询循环（生命周期守护）
         val handler = Handler(Looper.getMainLooper())
         val refreshRunnable = object : Runnable {
             override fun run() {
+                checkSync.run()
                 val cfg = ConfigBridge.query(ctx)
-                applyLayerLayout(tv, clock, rawParent, rootFrame, cfg)
-                tv.text = readSystemPower(ctx, cfg)
-
                 val refreshMs = ConfigBridge.longOf(
                     cfg, "hook_refresh_ms",
                     ConfigBridge.longOf(cfg, "refresh_ms", 1000L)
@@ -135,11 +182,19 @@ object SystemUIHook {
             }
         }
 
-        // 注册实时配置监听，支持图层模式/左右侧/偏移/颜色/全局刷新频率热更新
+        // 毫秒级重绘与排版感知监听：进入全屏游戏/退出全屏游戏瞬间触发
+        val preDrawListener = ViewTreeObserver.OnPreDrawListener {
+            val visibleNow = isClockVisibleOnScreen(clock)
+            if (visibleNow != lastClockVisible) {
+                checkSync.run()
+            }
+            true
+        }
+        clock.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+
+        // 注册实时配置监听，支持图层模式/左右侧/偏移/沉浸接管参数/颜色热更新
         ConfigBridge.ensureObserver(ctx) { freshCfg ->
-            applyLayerLayout(tv, clock, rawParent, rootFrame, freshCfg)
-            tv.text = readSystemPower(ctx, freshCfg)
-            // 立即以最新刷新频率重置主轮询节奏
+            checkSync.run()
             handler.removeCallbacks(refreshRunnable)
             val freshMs = ConfigBridge.longOf(
                 freshCfg, "hook_refresh_ms",
@@ -148,13 +203,20 @@ object SystemUIHook {
             handler.postDelayed(refreshRunnable, freshMs)
         }
 
-        // 息屏/全屏恢复监听
+        // 息屏/全屏/Attach 恢复监听
         clock.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
+                if (clock.viewTreeObserver.isAlive) {
+                    clock.viewTreeObserver.removeOnPreDrawListener(preDrawListener)
+                    clock.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+                }
                 handler.removeCallbacks(refreshRunnable)
                 handler.post(refreshRunnable)
             }
-            override fun onViewDetachedFromWindow(v: View) {}
+
+            override fun onViewDetachedFromWindow(v: View) {
+                checkSync.run()
+            }
         })
 
         handler.post(refreshRunnable)
@@ -168,10 +230,11 @@ object SystemUIHook {
         clock: View,
         rawParent: ViewGroup,
         rootFrame: FrameLayout,
-        cfg: Map<String, String>
+        cfg: Map<String, String>,
+        isClockVisible: Boolean
     ) {
         val enabled = ConfigBridge.boolOf(cfg, "hook_enabled", true)
-        if (!enabled || clock.visibility != View.VISIBLE) {
+        if (!enabled || !isClockVisible) {
             tv.visibility = View.GONE
             return
         } else {
@@ -209,7 +272,6 @@ object SystemUIHook {
             // ==========================================
             // 模式 A：独立覆盖图层（绝不挤占通知空间）
             // ==========================================
-            // 如果之前在并排 wrapper 中，则将其移出挂载到顶层 FrameLayout
             val currentParent = tv.parent as? ViewGroup
             if (currentParent != rootFrame) {
                 currentParent?.removeView(tv)
@@ -259,7 +321,6 @@ object SystemUIHook {
             // ==========================================
             // 模式 B：并排流式图层（占用通知空间）
             // ==========================================
-            // 如果在 rootFrame 中，移入时钟的包装器
             var wrapper = rawParent.findViewWithTag<LinearLayout>(WRAPPER_TAG)
             if (wrapper == null && clock.parent is LinearLayout && (clock.parent as View).tag == WRAPPER_TAG) {
                 wrapper = clock.parent as LinearLayout
@@ -338,6 +399,231 @@ object SystemUIHook {
 
             tv.translationX = ox.toFloat()
             tv.translationY = oy.toFloat()
+        }
+    }
+
+    /**
+     * 全屏与横屏沉浸接管管理器（运行在 SystemUI 进程内通过 WindowManager 维护顶层浮层）
+     */
+    internal object ImmersiveOverlayManager {
+        private var wm: WindowManager? = null
+        private var container: FrameLayout? = null
+        private var tv: TextView? = null
+        private var isAdded = false
+        private var lastGravity: Int = -1
+        private var lastX: Int = Int.MIN_VALUE
+        private var lastY: Int = Int.MIN_VALUE
+        private var lastStyle: Int = -1
+
+        fun update(
+            ctx: Context,
+            powerText: String,
+            cfg: Map<String, String>,
+            clock: View,
+            show: Boolean
+        ) {
+            if (Looper.myLooper() != Looper.getMainLooper()) {
+                Handler(Looper.getMainLooper()).post {
+                    update(ctx, powerText, cfg, clock, show)
+                }
+                return
+            }
+
+            if (!show) {
+                hide()
+                return
+            }
+
+            ensureView(ctx, clock)
+            val c = container ?: return
+            val textV = tv ?: return
+            val windowManager = wm ?: return
+
+            textV.text = powerText
+
+            // 样式同步与更新
+            val style = ConfigBridge.intOf(cfg, "hook_immersive_style", 1)
+            if (style != lastStyle) {
+                lastStyle = style
+                applyStyle(ctx, textV, style, clock)
+            }
+
+            // 布局位置偏好与 X/Y 微调偏移
+            val gravityPref = ConfigBridge.intOf(cfg, "hook_immersive_gravity", 1)
+            val targetGravity = when (gravityPref) {
+                0 -> Gravity.TOP or Gravity.START
+                2 -> Gravity.TOP or Gravity.END
+                else -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            }
+            val ox = ConfigBridge.intOf(cfg, "hook_immersive_offset_x", 0)
+            val oy = ConfigBridge.intOf(cfg, "hook_immersive_offset_y", 0)
+
+            val lp = c.layoutParams as? WindowManager.LayoutParams
+            if (lp != null) {
+                var changed = false
+                if (lp.gravity != targetGravity) {
+                    lp.gravity = targetGravity
+                    changed = true
+                }
+                if (lp.x != ox) {
+                    lp.x = ox
+                    changed = true
+                }
+                if (lp.y != oy) {
+                    lp.y = oy
+                    changed = true
+                }
+                if (changed) {
+                    runCatching { windowManager.updateViewLayout(c, lp) }
+                }
+            }
+
+            if (c.visibility != View.VISIBLE) {
+                c.visibility = View.VISIBLE
+            }
+        }
+
+        fun hide() {
+            if (Looper.myLooper() != Looper.getMainLooper()) {
+                Handler(Looper.getMainLooper()).post { hide() }
+                return
+            }
+            if (container?.visibility == View.VISIBLE) {
+                container?.visibility = View.GONE
+            }
+        }
+
+        private fun ensureView(ctx: Context, clock: View) {
+            if (isAdded && container != null) return
+            runCatching {
+                val windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+                wm = windowManager
+
+                val root = FrameLayout(ctx)
+                val textV = TextView(ctx).apply {
+                    includeFontPadding = false
+                    paint.isAntiAlias = true
+                    paint.isSubpixelText = true
+                    paint.isFakeBoldText = true
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                }
+
+                applyStyle(ctx, textV, 1, clock)
+
+                val childLp = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+                )
+                root.addView(textV, childLp)
+                root.visibility = View.GONE
+
+                val lpType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_PHONE
+                }
+
+                val lpFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+
+                val lp = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    lpType,
+                    lpFlags,
+                    PixelFormat.TRANSLUCENT
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    x = 0
+                    y = 0
+                }
+
+                windowManager.addView(root, lp)
+                container = root
+                tv = textV
+                isAdded = true
+            }.onFailure {
+                // 安全降级：尝试使用 TYPE_STATUS_BAR_ADDITIONAL 备选窗口类型
+                runCatching {
+                    val windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+                    wm = windowManager
+
+                    val root = FrameLayout(ctx)
+                    val textV = TextView(ctx).apply {
+                        includeFontPadding = false
+                        paint.isAntiAlias = true
+                        paint.isSubpixelText = true
+                        paint.isFakeBoldText = true
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                        setTextColor(Color.WHITE)
+                        gravity = Gravity.CENTER
+                    }
+                    applyStyle(ctx, textV, 1, clock)
+                    root.addView(textV, FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.CENTER
+                    ))
+                    root.visibility = View.GONE
+
+                    val fallbackType = 2041 // TYPE_STATUS_BAR_ADDITIONAL
+                    val lpFlags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                    val lp = WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.WRAP_CONTENT,
+                        WindowManager.LayoutParams.WRAP_CONTENT,
+                        fallbackType,
+                        lpFlags,
+                        PixelFormat.TRANSLUCENT
+                    ).apply {
+                        gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                        x = 0
+                        y = 0
+                    }
+                    windowManager.addView(root, lp)
+                    container = root
+                    tv = textV
+                    isAdded = true
+                }
+            }
+        }
+
+        private fun applyStyle(ctx: Context, textV: TextView, style: Int, clock: View) {
+            cloneClockTypography(textV, clock)
+            when (style) {
+                0 -> {
+                    // 极简纯文字
+                    textV.background = null
+                    val padH = dp(ctx, 4)
+                    val padV = dp(ctx, 2)
+                    textV.setPadding(padH, padV, padH, padV)
+                    textV.setTextColor(Color.WHITE)
+                    textV.setShadowLayer(4f, 1f, 1f, 0xCC000000.toInt())
+                }
+                else -> {
+                    // 雅致微胶囊 (默认推荐)
+                    val bg = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dp(ctx, 10).toFloat()
+                        setColor(0xCC1A1C1E.toInt()) // 高对比暗黑背景
+                        setStroke(dp(ctx, 1), 0x33FFFFFF.toInt()) // 细微发光边框
+                    }
+                    textV.background = bg
+                    val ph = dp(ctx, 8)
+                    val pv = dp(ctx, 3)
+                    textV.setPadding(ph, pv, ph, pv)
+                    textV.setTextColor(Color.WHITE)
+                    textV.setShadowLayer(0f, 0f, 0f, 0)
+                }
+            }
         }
     }
 

@@ -1,10 +1,13 @@
 package com.jakliuyuy.batterypower
 
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -41,6 +44,7 @@ class HookSettingsActivity : AppCompatActivity() {
 
         setupHookSwitch()
         setupLayerAndSide()
+        setupImmersiveSettings()
         setupOffsets()
         setupColorAndSize()
         setupChips()
@@ -98,6 +102,131 @@ class HookSettingsActivity : AppCompatActivity() {
         binding.toggleHookSide.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             SettingsStore.hookSide = if (checkedId == R.id.btn_hook_side_left) 1 else 0
+            updatePreview()
+        }
+    }
+
+    private fun setupImmersiveSettings() {
+        // 主开关
+        binding.swHookImmersive.isChecked = SettingsStore.hookImmersiveEnabled
+        binding.layoutImmersiveOptions.visibility = if (SettingsStore.hookImmersiveEnabled) View.VISIBLE else View.GONE
+        binding.swHookImmersive.setOnCheckedChangeListener { _, isChecked ->
+            SettingsStore.hookImmersiveEnabled = isChecked
+            binding.layoutImmersiveOptions.visibility = if (isChecked) View.VISIBLE else View.GONE
+            updatePreview()
+        }
+
+        // 接管位置偏好单选
+        when (SettingsStore.hookImmersiveGravity) {
+            SettingsStore.IMMERSIVE_GRAVITY_LEFT -> {
+                binding.toggleHookImmersiveGravity.check(R.id.btn_immersive_left)
+                binding.tvHookImmersiveGravityDesc.text = "顶部偏左：浮现在横屏屏幕上方左侧"
+            }
+            SettingsStore.IMMERSIVE_GRAVITY_RIGHT -> {
+                binding.toggleHookImmersiveGravity.check(R.id.btn_immersive_right)
+                binding.tvHookImmersiveGravityDesc.text = "顶部偏右：浮现在横屏屏幕上方右侧"
+            }
+            else -> {
+                binding.toggleHookImmersiveGravity.check(R.id.btn_immersive_center)
+                binding.tvHookImmersiveGravityDesc.text = "最顶居中：横屏打游戏时浮现在屏幕顶端中央，视野极佳且避开主视区（默认推荐）"
+            }
+        }
+        binding.toggleHookImmersiveGravity.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            when (checkedId) {
+                R.id.btn_immersive_left -> {
+                    SettingsStore.hookImmersiveGravity = SettingsStore.IMMERSIVE_GRAVITY_LEFT
+                    binding.tvHookImmersiveGravityDesc.text = "顶部偏左：浮现在横屏屏幕上方左侧"
+                }
+                R.id.btn_immersive_right -> {
+                    SettingsStore.hookImmersiveGravity = SettingsStore.IMMERSIVE_GRAVITY_RIGHT
+                    binding.tvHookImmersiveGravityDesc.text = "顶部偏右：浮现在横屏屏幕上方右侧"
+                }
+                else -> {
+                    SettingsStore.hookImmersiveGravity = SettingsStore.IMMERSIVE_GRAVITY_CENTER
+                    binding.tvHookImmersiveGravityDesc.text = "最顶居中：横屏打游戏时浮现在屏幕顶端中央，视野极佳且避开主视区（默认推荐）"
+                }
+            }
+            updatePreview()
+        }
+
+        // 水平微调 (-300px ~ +300px)
+        binding.sliderImmersiveOffsetX.value = SettingsStore.hookImmersiveOffsetX.toFloat().coerceIn(-300f, 300f)
+        binding.tvImmersiveOffsetXVal.text = "${SettingsStore.hookImmersiveOffsetX} px"
+        binding.sliderImmersiveOffsetX.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) {
+                val v = value.toInt()
+                SettingsStore.hookImmersiveOffsetX = v
+                binding.tvImmersiveOffsetXVal.text = "$v px"
+                updatePreview()
+            }
+        }
+        binding.btnImmersiveOffsetXMinus.setOnClickListener {
+            val v = (SettingsStore.hookImmersiveOffsetX - 10).coerceIn(-300, 300)
+            SettingsStore.hookImmersiveOffsetX = v
+            binding.sliderImmersiveOffsetX.value = v.toFloat()
+            binding.tvImmersiveOffsetXVal.text = "$v px"
+            updatePreview()
+        }
+        binding.btnImmersiveOffsetXPlus.setOnClickListener {
+            val v = (SettingsStore.hookImmersiveOffsetX + 10).coerceIn(-300, 300)
+            SettingsStore.hookImmersiveOffsetX = v
+            binding.sliderImmersiveOffsetX.value = v.toFloat()
+            binding.tvImmersiveOffsetXVal.text = "$v px"
+            updatePreview()
+        }
+        binding.btnImmersiveOffsetXZero.setOnClickListener {
+            SettingsStore.hookImmersiveOffsetX = 0
+            binding.sliderImmersiveOffsetX.value = 0f
+            binding.tvImmersiveOffsetXVal.text = "0 px"
+            updatePreview()
+        }
+
+        // 垂直微调 (0px ~ 100px)
+        binding.sliderImmersiveOffsetY.value = SettingsStore.hookImmersiveOffsetY.toFloat().coerceIn(0f, 100f)
+        binding.tvImmersiveOffsetYVal.text = "${SettingsStore.hookImmersiveOffsetY} px"
+        binding.sliderImmersiveOffsetY.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) {
+                val v = value.toInt()
+                SettingsStore.hookImmersiveOffsetY = v
+                binding.tvImmersiveOffsetYVal.text = "$v px"
+                updatePreview()
+            }
+        }
+        binding.btnImmersiveOffsetYMinus.setOnClickListener {
+            val v = (SettingsStore.hookImmersiveOffsetY - 5).coerceIn(0, 100)
+            SettingsStore.hookImmersiveOffsetY = v
+            binding.sliderImmersiveOffsetY.value = v.toFloat()
+            binding.tvImmersiveOffsetYVal.text = "$v px"
+            updatePreview()
+        }
+        binding.btnImmersiveOffsetYPlus.setOnClickListener {
+            val v = (SettingsStore.hookImmersiveOffsetY + 5).coerceIn(0, 100)
+            SettingsStore.hookImmersiveOffsetY = v
+            binding.sliderImmersiveOffsetY.value = v.toFloat()
+            binding.tvImmersiveOffsetYVal.text = "$v px"
+            updatePreview()
+        }
+        binding.btnImmersiveOffsetYZero.setOnClickListener {
+            SettingsStore.hookImmersiveOffsetY = 0
+            binding.sliderImmersiveOffsetY.value = 0f
+            binding.tvImmersiveOffsetYVal.text = "0 px"
+            updatePreview()
+        }
+
+        // 外观风格选择
+        if (SettingsStore.hookImmersiveStyle == SettingsStore.IMMERSIVE_STYLE_TEXT) {
+            binding.toggleHookImmersiveStyle.check(R.id.btn_immersive_style_text)
+        } else {
+            binding.toggleHookImmersiveStyle.check(R.id.btn_immersive_style_capsule)
+        }
+        binding.toggleHookImmersiveStyle.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            SettingsStore.hookImmersiveStyle = if (checkedId == R.id.btn_immersive_style_text) {
+                SettingsStore.IMMERSIVE_STYLE_TEXT
+            } else {
+                SettingsStore.IMMERSIVE_STYLE_CAPSULE
+            }
             updatePreview()
         }
     }
@@ -267,6 +396,7 @@ class HookSettingsActivity : AppCompatActivity() {
 
     private fun updatePreview() {
         val sample = BatteryReader.read(this)
+        updateImmersivePreview(sample)
         if (!SettingsStore.hookEnabled) {
             binding.tvPreviewClockLeft.visibility = View.GONE
             binding.tvPreviewClockRight.visibility = View.GONE
@@ -300,6 +430,54 @@ class HookSettingsActivity : AppCompatActivity() {
 
         targetTv.translationX = (SettingsStore.hookOffsetX / 10f).coerceIn(-25f, 120f)
         targetTv.translationY = (SettingsStore.hookOffsetY / 6f).coerceIn(-15f, 15f)
+    }
+
+    private fun updateImmersivePreview(sample: BatteryReader.Sample) {
+        val hookUnit = SettingsStore.hookShowUnit
+        val hookParts = mutableListOf<String>()
+        if (SettingsStore.hookShowPower) hookParts.add(sample.powerText(hookUnit))
+        if (SettingsStore.hookShowCurrent) hookParts.add(sample.currentText(hookUnit))
+        if (SettingsStore.hookShowVoltage) hookParts.add(sample.voltageText(hookUnit))
+        if (SettingsStore.hookShowTemp && sample.tempC > 0) hookParts.add(sample.tempText(hookUnit))
+        if (SettingsStore.hookShowLevel) hookParts.add(sample.levelText(hookUnit))
+        val powerText = if (hookParts.isEmpty()) sample.powerText(hookUnit) else hookParts.joinToString(" ")
+
+        binding.tvPreviewImmersiveBadge.text = powerText
+
+        val immersiveGravity = when (SettingsStore.hookImmersiveGravity) {
+            SettingsStore.IMMERSIVE_GRAVITY_LEFT -> Gravity.TOP or Gravity.START
+            SettingsStore.IMMERSIVE_GRAVITY_RIGHT -> Gravity.TOP or Gravity.END
+            else -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        }
+        val lp = (binding.tvPreviewImmersiveBadge.layoutParams as? FrameLayout.LayoutParams)
+            ?: FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        lp.gravity = immersiveGravity
+        lp.topMargin = dp(6)
+        if (SettingsStore.hookImmersiveGravity == SettingsStore.IMMERSIVE_GRAVITY_LEFT) {
+            lp.marginStart = dp(16)
+            lp.marginEnd = 0
+        } else if (SettingsStore.hookImmersiveGravity == SettingsStore.IMMERSIVE_GRAVITY_RIGHT) {
+            lp.marginStart = 0
+            lp.marginEnd = dp(16)
+        } else {
+            lp.marginStart = 0
+            lp.marginEnd = 0
+        }
+        binding.tvPreviewImmersiveBadge.layoutParams = lp
+
+        binding.tvPreviewImmersiveBadge.translationX = (SettingsStore.hookImmersiveOffsetX / 10f).coerceIn(-35f, 35f)
+        binding.tvPreviewImmersiveBadge.translationY = (SettingsStore.hookImmersiveOffsetY / 8f).coerceIn(0f, 16f)
+
+        if (SettingsStore.hookImmersiveStyle == SettingsStore.IMMERSIVE_STYLE_TEXT) {
+            binding.tvPreviewImmersiveBadge.background = null
+            binding.tvPreviewImmersiveBadge.setShadowLayer(5f, 1f, 1f, Color.BLACK)
+        } else {
+            binding.tvPreviewImmersiveBadge.setBackgroundResource(R.drawable.bg_capsule_dark)
+            binding.tvPreviewImmersiveBadge.setShadowLayer(0f, 0f, 0f, 0)
+        }
     }
 
     private fun restartSystemUI() {

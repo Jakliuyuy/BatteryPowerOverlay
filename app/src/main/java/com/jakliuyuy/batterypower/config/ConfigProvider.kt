@@ -81,7 +81,12 @@ class ConfigProvider : ContentProvider() {
             "hook_show_temp",
             "hook_show_level",
             "polarity_invert",
-            "double_cell_fix"
+            "double_cell_fix",
+            "hook_immersive_enabled",
+            "hook_immersive_gravity",
+            "hook_immersive_offset_x",
+            "hook_immersive_offset_y",
+            "hook_immersive_style"
         )
     }
 }

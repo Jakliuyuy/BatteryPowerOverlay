@@ -119,6 +119,43 @@ class ConfigParsingTest {
     }
 
     @Test
+    fun testImmersiveSettingsParsing() {
+        // 1. 默认缺省值回退测试（横屏默认最顶居中: 1）
+        val emptyConfig = emptyMap<String, String>()
+        assertFalse(ConfigBridge.boolOf(emptyConfig, "hook_immersive_enabled", false))
+        assertEquals(1, ConfigBridge.intOf(emptyConfig, "hook_immersive_gravity", 1))
+        assertEquals(0, ConfigBridge.intOf(emptyConfig, "hook_immersive_offset_x", 0))
+        assertEquals(0, ConfigBridge.intOf(emptyConfig, "hook_immersive_offset_y", 0))
+        assertEquals(1, ConfigBridge.intOf(emptyConfig, "hook_immersive_style", 1))
+
+        // 2. 正常配置解析
+        val validConfig = mapOf(
+            "hook_immersive_enabled" to "true",
+            "hook_immersive_gravity" to "2",
+            "hook_immersive_offset_x" to "25",
+            "hook_immersive_offset_y" to "10",
+            "hook_immersive_style" to "0"
+        )
+        assertTrue(ConfigBridge.boolOf(validConfig, "hook_immersive_enabled", false))
+        assertEquals(2, ConfigBridge.intOf(validConfig, "hook_immersive_gravity", 1))
+        assertEquals(25, ConfigBridge.intOf(validConfig, "hook_immersive_offset_x", 0))
+        assertEquals(10, ConfigBridge.intOf(validConfig, "hook_immersive_offset_y", 0))
+        assertEquals(0, ConfigBridge.intOf(validConfig, "hook_immersive_style", 1))
+
+        // 3. 容错解析异常格式平稳回退
+        val malformedConfig = mapOf(
+            "hook_immersive_enabled" to "xyz",
+            "hook_immersive_gravity" to "center",
+            "hook_immersive_offset_x" to "bad_x",
+            "hook_immersive_offset_y" to "bad_y"
+        )
+        assertFalse(ConfigBridge.boolOf(malformedConfig, "hook_immersive_enabled", false))
+        assertEquals(1, ConfigBridge.intOf(malformedConfig, "hook_immersive_gravity", 1))
+        assertEquals(0, ConfigBridge.intOf(malformedConfig, "hook_immersive_offset_x", 0))
+        assertEquals(0, ConfigBridge.intOf(malformedConfig, "hook_immersive_offset_y", 0))
+    }
+
+    @Test
     fun testAllKeysCompleteness() {
         val requiredKeys = setOf(
             "hook_enabled",
@@ -141,7 +178,12 @@ class ConfigParsingTest {
             "hook_show_temp",
             "hook_show_level",
             "polarity_invert",
-            "double_cell_fix"
+            "double_cell_fix",
+            "hook_immersive_enabled",
+            "hook_immersive_gravity",
+            "hook_immersive_offset_x",
+            "hook_immersive_offset_y",
+            "hook_immersive_style"
         )
         val providerKeys = com.jakliuyuy.batterypower.config.ConfigProvider.ALL_KEYS.toSet()
         for (key in requiredKeys) {
