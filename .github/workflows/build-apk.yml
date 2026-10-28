@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,8 +21,8 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
       - name: Build APK
         run: chmod +x gradlew && ./gradlew assembleRelease assembleDebug --no-daemon
@@ -36,3 +39,22 @@ jobs:
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Create / Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v3.0.0
+          name: "v3.0.0: Material 3 现代化重构版"
+          body: |
+            ## ✨ v3.0.0 重构更新日志
+
+            - **全新 Material 3 现代化 UI**：顶部实时电池看板，大号动态功率指示，电流、电压、电量、温度实时矩阵
+            - **彻底修复开机后位置丢失**：全面支持 Direct Boot，采用设备保护存储与 commit 同步落盘
+            - **状态栏 Hook 测绘就绪与双向锚点**：引入 OnGlobalLayoutListener 杜绝开机 0 尺寸错误，自适应左右时钟与四种锚点基准
+            - **毫秒级热刷新**：引入 ContentObserver 实时监听，App 调节即刻生效
+            - **桌面悬浮窗样式**：4 款胶囊背景风格（磨砂黑胶囊、半透毛玻璃、细线描边、极简全透）与防越界保护
+            - **扩展特性**：开机自启动悬浮窗、双电芯倍率兼容、充放电极性反转校准、节点底层诊断
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/debug/app-debug.apk
