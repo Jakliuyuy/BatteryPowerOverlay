@@ -25,7 +25,6 @@ object ConfigBridge {
     @Volatile
     private var nextRetryAt = 0L
 
-    private val listeners = java.util.concurrent.CopyOnWriteArrayList<(Map<String, String>) -> Unit>()
     private var isObserverRegistered = false
 
     private fun getDeviceProtectedContext(ctx: Context): Context {
@@ -36,24 +35,8 @@ object ConfigBridge {
         }
     }
 
-    /** 注册 ContentObserver 监听配置变动，支持生命周期重绑与多组件监听 */
-    fun addObserver(ctx: Context, onConfigUpdate: (Map<String, String>) -> Unit) {
-        if (!listeners.contains(onConfigUpdate)) {
-            listeners.add(onConfigUpdate)
-        }
-        ensureContentObserver(ctx)
-    }
-
-    fun removeObserver(onConfigUpdate: (Map<String, String>) -> Unit) {
-        listeners.remove(onConfigUpdate)
-    }
-
-    /** 兼容接口：确保 ContentObserver 已挂载并注册监听 */
+    /** 注册 ContentObserver 监听配置变动 */
     fun ensureObserver(ctx: Context, onConfigUpdate: (Map<String, String>) -> Unit) {
-        addObserver(ctx, onConfigUpdate)
-    }
-
-    private fun ensureContentObserver(ctx: Context) {
         if (isObserverRegistered) return
         try {
             val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
@@ -62,9 +45,7 @@ object ConfigBridge {
                     if (fresh.isNotEmpty()) {
                         memoryCache = fresh
                         saveToDisk(ctx, fresh)
-                        for (listener in listeners) {
-                            runCatching { listener(fresh) }
-                        }
+                        onConfigUpdate(fresh)
                     }
                 }
             }

@@ -119,83 +119,6 @@ class ConfigParsingTest {
     }
 
     @Test
-    fun testImmersiveSettingsParsing() {
-        // 1. 默认缺省值回退测试（横屏默认最顶居中: 1）
-        val emptyConfig = emptyMap<String, String>()
-        assertFalse(ConfigBridge.boolOf(emptyConfig, "hook_immersive_enabled", false))
-        assertEquals(1, ConfigBridge.intOf(emptyConfig, "hook_immersive_gravity", 1))
-        assertEquals(0, ConfigBridge.intOf(emptyConfig, "hook_immersive_offset_x", 0))
-        assertEquals(0, ConfigBridge.intOf(emptyConfig, "hook_immersive_offset_y", 0))
-        assertEquals(1, ConfigBridge.intOf(emptyConfig, "hook_immersive_style", 1))
-
-        // 2. 正常配置解析
-        val validConfig = mapOf(
-            "hook_immersive_enabled" to "true",
-            "hook_immersive_gravity" to "2",
-            "hook_immersive_offset_x" to "25",
-            "hook_immersive_offset_y" to "10",
-            "hook_immersive_style" to "0"
-        )
-        assertTrue(ConfigBridge.boolOf(validConfig, "hook_immersive_enabled", false))
-        assertEquals(2, ConfigBridge.intOf(validConfig, "hook_immersive_gravity", 1))
-        assertEquals(25, ConfigBridge.intOf(validConfig, "hook_immersive_offset_x", 0))
-        assertEquals(10, ConfigBridge.intOf(validConfig, "hook_immersive_offset_y", 0))
-        assertEquals(0, ConfigBridge.intOf(validConfig, "hook_immersive_style", 1))
-
-        // 3. 容错解析异常格式平稳回退
-        val malformedConfig = mapOf(
-            "hook_immersive_enabled" to "xyz",
-            "hook_immersive_gravity" to "center",
-            "hook_immersive_offset_x" to "bad_x",
-            "hook_immersive_offset_y" to "bad_y"
-        )
-        assertFalse(ConfigBridge.boolOf(malformedConfig, "hook_immersive_enabled", false))
-        assertEquals(1, ConfigBridge.intOf(malformedConfig, "hook_immersive_gravity", 1))
-        assertEquals(0, ConfigBridge.intOf(malformedConfig, "hook_immersive_offset_x", 0))
-        assertEquals(0, ConfigBridge.intOf(malformedConfig, "hook_immersive_offset_y", 0))
-    }
-
-    @Test
-    fun testObserverManagement() {
-        var callCount1 = 0
-        var callCount2 = 0
-        val l1: (Map<String, String>) -> Unit = { callCount1++ }
-        val l2: (Map<String, String>) -> Unit = { callCount2++ }
-
-        // 模拟观察者注册与注销
-        ConfigBridge.removeObserver(l1)
-        ConfigBridge.removeObserver(l2)
-
-        val listenersField = ConfigBridge::class.java.getDeclaredField("listeners")
-        listenersField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val listeners = listenersField.get(ConfigBridge) as java.util.concurrent.CopyOnWriteArrayList<(Map<String, String>) -> Unit>
-
-        val initialSize = listeners.size
-        listeners.add(l1)
-        listeners.add(l2)
-        assertEquals(initialSize + 2, listeners.size)
-
-        // 模拟广播分发
-        for (listener in listeners) {
-            listener(mapOf("test" to "1"))
-        }
-        assertEquals(1, callCount1)
-        assertEquals(1, callCount2)
-
-        // 注销 l1
-        listeners.remove(l1)
-        for (listener in listeners) {
-            listener(mapOf("test" to "2"))
-        }
-        assertEquals(1, callCount1)
-        assertEquals(2, callCount2)
-
-        // 清理
-        listeners.remove(l2)
-    }
-
-    @Test
     fun testAllKeysCompleteness() {
         val requiredKeys = setOf(
             "hook_enabled",
@@ -218,12 +141,7 @@ class ConfigParsingTest {
             "hook_show_temp",
             "hook_show_level",
             "polarity_invert",
-            "double_cell_fix",
-            "hook_immersive_enabled",
-            "hook_immersive_gravity",
-            "hook_immersive_offset_x",
-            "hook_immersive_offset_y",
-            "hook_immersive_style"
+            "double_cell_fix"
         )
         val providerKeys = com.jakliuyuy.batterypower.config.ConfigProvider.ALL_KEYS.toSet()
         for (key in requiredKeys) {

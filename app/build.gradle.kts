@@ -13,8 +13,8 @@ android {
         applicationId = "com.jakliuyuy.batterypower"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "3.3.0"
+        versionCode = 4
+        versionName = "3.2.0"
     }
 
     // 签名策略：有 KEYSTORE_BASE64 环境变量（GitHub Actions secrets）时用正式签名，

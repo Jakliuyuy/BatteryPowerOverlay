@@ -259,52 +259,6 @@ object SettingsStore {
             getEditor().putBoolean("hook_show_temp", v).commit()
             notifyHookUpdate()
         }
-
-    // ==========================================
-    // 全屏 / 横屏沉浸接管设置
-    // ==========================================
-    const val IMMERSIVE_GRAVITY_LEFT = 0
-    const val IMMERSIVE_GRAVITY_CENTER = 1
-    const val IMMERSIVE_GRAVITY_RIGHT = 2
-
-    const val IMMERSIVE_STYLE_TEXT = 0
-    const val IMMERSIVE_STYLE_CAPSULE = 1
-
-    var hookImmersiveEnabled: Boolean
-        get() = sp(AppContext.get()).getBoolean("hook_immersive_enabled", false)
-        set(v) {
-            getEditor().putBoolean("hook_immersive_enabled", v).commit()
-            notifyHookUpdate()
-        }
-
-    // 0=横屏左侧, 1=最顶居中(默认), 2=横屏右侧
-    var hookImmersiveGravity: Int
-        get() = sp(AppContext.get()).getInt("hook_immersive_gravity", IMMERSIVE_GRAVITY_CENTER)
-        set(v) {
-            getEditor().putInt("hook_immersive_gravity", v).commit()
-            notifyHookUpdate()
-        }
-
-    var hookImmersiveOffsetX: Int
-        get() = sp(AppContext.get()).getInt("hook_immersive_offset_x", 0)
-        set(v) {
-            getEditor().putInt("hook_immersive_offset_x", v).commit()
-            notifyHookUpdate()
-        }
-
-    var hookImmersiveOffsetY: Int
-        get() = sp(AppContext.get()).getInt("hook_immersive_offset_y", 0)
-        set(v) {
-            getEditor().putInt("hook_immersive_offset_y", v).commit()
-            notifyHookUpdate()
-        }
-
-    var hookImmersiveStyle: Int
-        get() = sp(AppContext.get()).getInt("hook_immersive_style", 1)
-        set(v) {
-            getEditor().putInt("hook_immersive_style", v).commit()
-            notifyHookUpdate()
-        }
 }
 
 /** 全局 Context 安全安全托管 */
