@@ -70,24 +70,25 @@ object SystemUIHook {
             runCatching { XposedHelpers.findClass(it, lpparam.classLoader) }.getOrNull()
         } ?: return
 
-        // 1. Hook onAttachedToWindow 实现挂载与实例交接
+        // 1. Hook onAttachedToWindow 实现主时钟精准识别与单例锁定挂载（Primary Clock Locking）
         XposedHelpers.findAndHookMethod(
             clockClass,
             "onAttachedToWindow",
             object : XC_MethodHook() {
                 override fun afterHookedMethod(param: MethodHookParam) {
                     val clock = param.thisObject as? View ?: return
-                    if (!isStatusBarClock(clock)) return
-                    inject(clock)
+                    onClockAttached(clock)
                 }
             }
         )
 
-        // 2. 毫秒级原生系统可见性拦截（解决不可见时不进入 Draw 导致 OnPreDrawListener 哑火的致命缺陷）
+        // 2. 毫秒级原生系统可见性拦截（仅响应主时钟的可见性变更，防止非主时钟扰动）
         val visibilityHook = object : XC_MethodHook() {
             override fun afterHookedMethod(param: MethodHookParam) {
                 val clock = param.thisObject as? View ?: return
-                if (isStatusBarClock(clock)) {
+                if (!isStatusBarClock(clock)) return
+                val currentPrimary = activeClockRef?.get()
+                if (currentPrimary == null || currentPrimary === clock) {
                     triggerSyncNow()
                 }
             }
@@ -127,53 +128,228 @@ object SystemUIHook {
         }
     }
 
-    /**
-     * 判断是否为常驻状态栏的时钟，排除锁屏与下拉快捷设置时钟
-     */
-    private fun isStatusBarClock(clock: View): Boolean {
-        return try {
-            val resName = runCatching {
-                clock.resources.getResourceEntryName(clock.id)
-            }.getOrNull() ?: ""
+    private val NEGATIVE_KEYWORDS = listOf(
+        "recent",
+        "overview",
+        "taskbar",
+        "keyguard",
+        "lockscreen",
+        "keyguard_lock",
+        "qs",
+        "header",
+        "quicksettings",
+        "controlcenter",
+        "split",
+        "floating"
+    )
 
-            // 锁屏与下拉大时钟排除
-            val lowerRes = resName.lowercase()
-            if (lowerRes.contains("keyguard") || lowerRes.contains("qs") || lowerRes.contains("header")) {
-                return false
-            }
-
-            // 检查祖先视图链
-            var p: View? = clock.parent as? View
-            var depth = 0
-            while (p != null && depth++ < 12) {
-                val pCls = p.javaClass.name.lowercase()
-                val pRes = runCatching { p.resources.getResourceEntryName(p.id) }.getOrNull()?.lowercase() ?: ""
-                if (pCls.contains("keyguard") || pRes.contains("keyguard") || pCls.contains("quicksettings")) {
-                    return false
-                }
-                p = p.parent as? View
-            }
-            true
-        } catch (_: Exception) {
-            true
+    private fun isNegativeName(name: String): Boolean {
+        if (name.isEmpty()) return false
+        val lower = name.lowercase()
+        // 关键白名单豁免：若名称属于合法的时钟命名（包含 "clock"），
+        // 且不包含明确的负向词（如 keyguard, lockscreen, recent, overview, qs 等），严禁误杀
+        if (lower.contains("clock")) {
+            return lower.contains("keyguard") ||
+                    lower.contains("lockscreen") ||
+                    lower.contains("recent") ||
+                    lower.contains("overview") ||
+                    lower.contains("taskbar") ||
+                    lower.contains("qs") ||
+                    lower.contains("header") ||
+                    lower.contains("quicksettings") ||
+                    lower.contains("controlcenter") ||
+                    lower.contains("split") ||
+                    lower.contains("floating")
         }
+        for (kw in NEGATIVE_KEYWORDS) {
+            if (lower.contains(kw)) return true
+        }
+        return false
     }
 
     /**
-     * 精确检测时钟是否在当前屏幕物理可见
+     * 检测视图是否具备原生状态栏容器特征（PhoneStatusBarView 或 status_bar 资源标识）
+     */
+    private fun isPhoneStatusBarAncestor(view: View): Boolean {
+        val cls = view.javaClass.name.lowercase()
+        if (cls.contains("phonestatusbarview") || cls.contains("statusbar.phone")) return true
+        val res = runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull()?.lowercase() ?: ""
+        if (res.isNotEmpty() && !isNegativeName(res)) {
+            if (res == "status_bar" || res == "status_bar_contents" || res == "status_bar_left_side" || res == "phone_status_bar" || res == "status_bar_area") {
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * 判断视图祖先链中是否存在原生 PhoneStatusBarView 或合法的 status_bar 资源标识
+     */
+    private fun hasPhoneStatusBarAncestor(view: View): Boolean {
+        var p: View? = view.parent as? View
+        var depth = 0
+        while (p != null && depth++ < 16) {
+            if (isPhoneStatusBarAncestor(p)) return true
+            p = p.parent as? View
+        }
+        return false
+    }
+
+    /**
+     * 处理时钟 Attach 事件：实现主状态栏时钟单例锁定（Primary Clock Locking），
+     * 杜绝后续多任务/二级时钟破坏性覆盖。
+     */
+    private fun onClockAttached(clock: View) {
+        if (!isStatusBarClock(clock)) return
+
+        val current = activeClockRef?.get()
+        if (current != null && current.isAttachedToWindow) {
+            // 同一时钟实例再次触发 attach，保持锁定并刷新
+            if (current === clock) {
+                triggerSyncNow()
+                return
+            }
+
+            // 主时钟锁定保护：若已有主时钟是优质原生主时钟，绝对禁止后续非主时钟篡改单例
+            val curHasPhoneBar = hasPhoneStatusBarAncestor(current)
+            val newHasPhoneBar = hasPhoneStatusBarAncestor(clock)
+
+            if (curHasPhoneBar && !newHasPhoneBar) {
+                return
+            }
+            if (curHasPhoneBar && newHasPhoneBar) {
+                // 已有正宗主状态栏时钟保持存活，维持锁定
+                return
+            }
+        }
+
+        // 锁定主状态栏时钟并完成注入挂载
+        inject(clock)
+    }
+
+    /**
+     * 判断是否为常驻状态栏的时钟：
+     * 正向精准识别：祖先链中具备 PhoneStatusBarView 或 status_bar 资源标识
+     * 负向全面排除：自身及祖先链排除 recent, overview, taskbar, keyguard, lock, qs, header, quicksettings, controlcenter, split, floating
+     */
+    private fun isStatusBarClock(clock: View): Boolean {
+        return try {
+            // 1. 检查时钟自身类名与资源名
+            val clockCls = clock.javaClass.name.lowercase()
+            if (isNegativeName(clockCls)) return false
+
+            val resName = runCatching {
+                clock.resources.getResourceEntryName(clock.id)
+            }.getOrNull() ?: ""
+            if (isNegativeName(resName)) return false
+
+            // 2. 检查祖先视图链（负向全面排除 + 正向特征检测）
+            var p: View? = clock.parent as? View
+            var depth = 0
+            var hasPositiveAncestor = false
+
+            while (p != null && depth++ < 16) {
+                val pCls = p.javaClass.name.lowercase()
+                if (isNegativeName(pCls)) return false
+
+                val pRes = runCatching { p.resources.getResourceEntryName(p.id) }.getOrNull()?.lowercase() ?: ""
+                if (pRes.isNotEmpty() && isNegativeName(pRes)) return false
+
+                if (isPhoneStatusBarAncestor(p)) {
+                    hasPositiveAncestor = true
+                }
+
+                p = p.parent as? View
+            }
+
+            hasPositiveAncestor
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    // 施密特触发器物理边界状态（迟滞区间防抖，消除边缘 1px 抖动引发的高频频闪）
+    private var lastPhysicalVisible = true
+
+    /**
+     * 健壮检测主状态栏时钟是否在当前屏幕物理可见：
+     * 1. 消除未排版尺寸误杀（width/height <= 0 时不判定为越界）；
+     * 2. 解除 isShown 假阴性连坐（仅检查直接与紧邻父级非 GONE/INVISIBLE，且透明度有效）；
+     * 3. 物理视口 4 边界检测（左/上/右/下）与施密特迟滞区间（Hysteresis）；
+     * 4. 保障普通桌面与常规前台应用下 100% 稳定常驻。
      */
     private fun isClockVisibleOnScreen(clock: View): Boolean {
-        if (!clock.isAttachedToWindow) return false
-        if (clock.visibility != View.VISIBLE) return false
-        if (clock.windowVisibility != View.VISIBLE) return false
-        if (!clock.isShown) return false
-
-        // 检测是否被厂商系统移出屏幕可视边界（例如 translationY 移出）
-        val loc = IntArray(2)
-        clock.getLocationOnScreen(loc)
-        if (loc[1] + clock.height <= 0 || loc[0] + clock.width <= 0) {
+        if (!clock.isAttachedToWindow) {
+            lastPhysicalVisible = false
             return false
         }
+        if (clock.visibility != View.VISIBLE) {
+            lastPhysicalVisible = false
+            return false
+        }
+        if (clock.windowVisibility != View.VISIBLE) {
+            lastPhysicalVisible = false
+            return false
+        }
+
+        // 祖先链检测：必须全为 View.VISIBLE，且透明度不能淡出为 0
+        // 同时拦截 View.GONE 与 View.INVISIBLE（值为 4），杜绝祖先隐藏穿透
+        var p: View? = clock.parent as? View
+        var depth = 0
+        while (p != null && depth++ < 5) {
+            if (p.visibility != View.VISIBLE) {
+                lastPhysicalVisible = false
+                return false
+            }
+            if (p.alpha <= 0.01f) {
+                lastPhysicalVisible = false
+                return false
+            }
+            p = p.parent as? View
+        }
+
+        // 时钟自身透明度检查：淡出动画完成则不可见
+        if (clock.alpha <= 0.01f) {
+            lastPhysicalVisible = false
+            return false
+        }
+
+        // 物理视口 4 边界检测与施密特迟滞防抖区间
+        // 仅在完成 Measure/Layout 且尺寸有效时检测，消除未排版尺寸误杀
+        if (clock.width > 0 && clock.height > 0) {
+            val loc = IntArray(2)
+            clock.getLocationOnScreen(loc)
+            val clockX = loc[0]
+            val clockY = loc[1]
+            val clockW = clock.width
+            val clockH = clock.height
+
+            val dm = clock.resources?.displayMetrics
+            val screenW = if (dm != null && dm.widthPixels > 0) dm.widthPixels else 1080
+            val screenH = if (dm != null && dm.heightPixels > 0) dm.heightPixels else 2400
+
+            // 施密特双阈值迟滞（Hysteresis Deadband）：
+            // 移出屏幕判定使用深层阈值 (-12px)，重新进入屏幕使用安全门禁 (0px)
+            val isPhysicalVisible = if (lastPhysicalVisible) {
+                // 当前为可见状态：只有当完全滑出 4 个物理屏幕边界各 12px 以外时，才判定为不可见
+                val outLeft = clockX + clockW < -12
+                val outTop = clockY + clockH < -12
+                val outRight = clockX > screenW + 12
+                val outBottom = clockY > screenH + 12
+                !(outLeft || outTop || outRight || outBottom)
+            } else {
+                // 当前为不可见状态：只有当重新回到屏幕物理边界内时，才恢复为可见
+                val inHorizontal = clockX + clockW >= 0 && clockX <= screenW
+                val inVertical = clockY + clockH >= 0 && clockY <= screenH
+                inHorizontal && inVertical
+            }
+
+            lastPhysicalVisible = isPhysicalVisible
+            if (!isPhysicalVisible) {
+                return false
+            }
+        }
+
         return true
     }
 
@@ -209,9 +385,9 @@ object SystemUIHook {
         }
 
         activeClockRef = WeakReference(clock)
-        activeTvRef = WeakReference(tv)
-
         var lastClockVisible = isClockVisibleOnScreen(clock)
+        var lastClockWidth = clock.width
+        var lastClockHeight = clock.height
 
         // 核心同步刷新机制：同时维护状态栏文字与全屏沉浸浮层
         val checkSync = Runnable {
@@ -245,16 +421,29 @@ object SystemUIHook {
 
             ImmersiveOverlayManager.update(currentCtx, powerText, cfg, currentClock, shouldShowImmersive)
             lastClockVisible = isVis
+            if (currentClock != null) {
+                lastClockWidth = currentClock.width
+                lastClockHeight = currentClock.height
+            }
         }
         activeSyncRunnable = checkSync
 
-        // 毫秒级重绘与排版感知监听
+        // 毫秒级重绘与排版感知监听（兼顾可见性切换与未排版尺寸突变，杜绝 0 宽排版锁死与突跳）
         val preDrawListener = ViewTreeObserver.OnPreDrawListener {
             val curClock = activeClockRef?.get()
             if (curClock != null) {
                 val visibleNow = isClockVisibleOnScreen(curClock)
-                if (visibleNow != lastClockVisible) {
+                val widthNow = curClock.width
+                val heightNow = curClock.height
+                val sizeChanged = (lastClockWidth <= 0 && widthNow > 0) ||
+                        (lastClockHeight <= 0 && heightNow > 0) ||
+                        (widthNow != lastClockWidth) ||
+                        (heightNow != lastClockHeight)
+
+                if (visibleNow != lastClockVisible || sizeChanged) {
                     lastClockVisible = visibleNow
+                    lastClockWidth = widthNow
+                    lastClockHeight = heightNow
                     checkSync.run()
                 }
             }
@@ -333,9 +522,13 @@ object SystemUIHook {
         if (!enabled || !isClockVisible) {
             tv.visibility = View.GONE
             return
-        } else {
-            tv.visibility = View.VISIBLE
         }
+        // 若时钟尚未排版完成（width <= 0 或 height <= 0），悬浮文字暂时隐藏以防未排版错位
+        if (clock.width <= 0 || clock.height <= 0) {
+            tv.visibility = View.INVISIBLE
+            return
+        }
+        tv.visibility = View.VISIBLE
 
         // 字体与字号克隆（支持跟随系统时钟等大）
         cloneClockTypography(tv, clock)
@@ -408,7 +601,7 @@ object SystemUIHook {
                 clockXInRoot + clock.width + dp(ctx, 4) + ox
             }
 
-            val targetY = clockYInRoot + (clock.height - tvH) / 2 + oy
+            val targetY = (clockYInRoot + (clock.height - tvH) / 2 + oy).coerceAtLeast(0)
 
             tv.translationX = targetX.toFloat()
             tv.translationY = targetY.toFloat()
@@ -626,10 +819,10 @@ object SystemUIHook {
             root.addView(textV, childLp)
             root.visibility = View.GONE
 
-            // 候选窗口类型梯队：首选 SystemUI 原生 2041，降级至标准顶层 2038 与系统覆盖层
+            // 候选窗口类型梯队：首选独立顶层 TYPE_APPLICATION_OVERLAY (2038)，彻底剔除 2041 (TYPE_STATUS_BAR_ADDITIONAL)
+            // 2038 独立于状态栏 Insets 隐藏管控，在全屏横屏游戏中稳定渲染，杜绝多任务划起反向冒出
             val candidateTypes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 listOf(
-                    2041, // TYPE_STATUS_BAR_ADDITIONAL (SystemUI 专属顶层，完美绕过应用覆盖层限制)
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                     2006, // TYPE_SYSTEM_OVERLAY
                     2003  // TYPE_SYSTEM_ALERT
@@ -637,7 +830,6 @@ object SystemUIHook {
             } else {
                 @Suppress("DEPRECATION")
                 listOf(
-                    2041,
                     WindowManager.LayoutParams.TYPE_SYSTEM_OVERLAY,
                     WindowManager.LayoutParams.TYPE_PHONE
                 )
@@ -717,16 +909,40 @@ object SystemUIHook {
         }
     }
 
-    /** 状态栏根容器（向上查找顶层 FrameLayout） */
+    /**
+     * 状态栏根容器（优先返回 Native 状态栏容器 PhoneStatusBarView，严防越界挂载到 NotificationShadeWindowView）
+     */
     private fun findStatusBarRoot(v: View): FrameLayout? {
         var cur: View? = v
-        var lastFrame: FrameLayout? = null
+        var candidate: FrameLayout? = null
+        var phoneStatusBarView: FrameLayout? = null
         var guard = 0
-        while (cur != null && guard++ < 15) {
-            if (cur is FrameLayout) lastFrame = cur
+        while (cur != null && guard++ < 20) {
+            val clsName = cur.javaClass.name.lowercase()
+            // 严禁攀爬至全屏下拉通知栏窗口或遮罩层，避免跨图层裁剪与 Insets 偏移
+            if (clsName.contains("notificationshadewindowview") ||
+                clsName.contains("statusbarnowindowview") ||
+                clsName.contains("trackingframelayout") ||
+                clsName.contains("scrimview")
+            ) {
+                break
+            }
+
+            if (cur is FrameLayout) {
+                if (clsName.contains("phonestatusbarview")) {
+                    phoneStatusBarView = cur
+                    break // 找到真正的 PhoneStatusBarView，立即以此作为根容器
+                }
+                val resName = runCatching { cur.resources.getResourceEntryName(cur.id) }.getOrNull()?.lowercase() ?: ""
+                if (resName == "status_bar" || (resName.contains("status_bar") && !isNegativeName(resName))) {
+                    candidate = cur
+                } else if (candidate == null) {
+                    candidate = cur
+                }
+            }
             cur = cur.parent as? View
         }
-        return lastFrame
+        return phoneStatusBarView ?: candidate
     }
 
     /** 1:1 像素级拟合 ColorOS 17 时钟字体与排版特征 */
