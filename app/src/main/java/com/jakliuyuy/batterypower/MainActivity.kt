@@ -1,8 +1,6 @@
 package com.jakliuyuy.batterypower
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -22,7 +20,15 @@ import com.jakliuyuy.batterypower.databinding.ActivityMainBinding
 import com.jakliuyuy.batterypower.overlay.OverlayService
 import com.jakliuyuy.batterypower.settings.AppContext
 import com.jakliuyuy.batterypower.settings.SettingsStore
+import kotlin.math.abs
 
+/**
+ * 现代化 Material 3 主控制台：
+ * 1. 实时电池动力看板 + 所见即所得模拟视窗。
+ * 2. 桌面悬浮窗控制（5 款质感外观、屏幕防溢出约束、贴边吸附与位置锁定）。
+ * 3. 状态栏 Hook 控制（原生兄弟内嵌防漂移、硬件位移微调步进器、状态栏颜色自适应、SystemUI 快速重启）。
+ * 4. 内核与底层硬件适配（极性翻转、双电芯修正、底层节点诊断）。
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
@@ -38,6 +44,7 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             if (!isMonitoringActive) return
             updateDashboard()
+            updatePreview()
             handler.postDelayed(this, 1000L)
         }
     }
@@ -48,6 +55,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setupTopBar()
         setupDashboard()
         setupOverlayCard()
         setupHookCard()
@@ -59,6 +67,7 @@ class MainActivity : AppCompatActivity() {
         isMonitoringActive = true
         handler.post(dashboardRunnable)
         refreshOverlaySwitchState()
+        updateLockBtnText()
     }
 
     override fun onPause() {
@@ -67,11 +76,18 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
     }
 
+    private fun setupTopBar() {
+        binding.btnOpenDiag.setOnClickListener {
+            startActivity(Intent(this, DiagnosticActivity::class.java))
+        }
+    }
+
     // -------------------------------------------------------------
-    // 1. 顶部实时电池看板
+    // 1. 顶部电池看板与实时视窗
     // -------------------------------------------------------------
     private fun setupDashboard() {
         updateDashboard()
+        updatePreview()
     }
 
     private fun updateDashboard() {
@@ -79,17 +95,89 @@ class MainActivity : AppCompatActivity() {
         val isRoot = sample.source == "root"
 
         binding.tvDriverSource.text = if (isRoot) "内核直读 (Root)" else "系统接口 (API)"
-        binding.tvDriverSource.setTextColor(if (isRoot) 0xFF00E676.toInt() else 0xFFFF9100.toInt())
+        val brandColor = ContextCompat.getColor(this, R.color.primary)
+        val orangeColor = ContextCompat.getColor(this, R.color.discharging_orange)
+        val greenColor = ContextCompat.getColor(this, R.color.charging_green)
+
+        binding.tvDriverSource.setTextColor(if (isRoot) brandColor else orangeColor)
 
         binding.tvLivePower.text = sample.powerText()
-        binding.tvLivePower.setTextColor(if (sample.isCharging) 0xFF00E676.toInt() else 0xFFFF9100.toInt())
+        binding.tvLivePower.setTextColor(if (sample.isCharging) greenColor else orangeColor)
 
-        binding.tvBatteryStatusDesc.text = if (sample.isCharging) "正在充电（充入电量）" else "正在放电（动力消耗）"
+        binding.tvBatteryStatusDesc.text = if (sample.isCharging) "⚡ 正在充电（电量充入中）" else "🔋 正在放电（动力消耗中）"
 
         binding.tvLiveCurrent.text = "${sample.currentMa} mA"
         binding.tvLiveVoltage.text = String.format("%.2f V", sample.voltageMv / 1000.0)
         binding.tvLiveLevel.text = "${sample.level} %"
         binding.tvLiveTemp.text = String.format("%.1f °C", sample.tempC)
+    }
+
+    private fun updatePreview() {
+        val sample = BatteryReader.read(this)
+        val unit = SettingsStore.showUnit
+
+        // 1. 悬浮窗微缩预览
+        val overlayParts = mutableListOf<String>()
+        if (SettingsStore.showPower) overlayParts.add(if (unit) sample.powerText() else sample.powerText().removeSuffix("W"))
+        if (SettingsStore.showCurrent) {
+            val ma = abs(sample.currentMa)
+            val str = if (ma >= 1000) String.format("%.2fA", sample.currentMa / 1000.0) else "${sample.currentMa}mA"
+            overlayParts.add(if (unit) str else str.replace("mA", "").replace("A", ""))
+        }
+        if (SettingsStore.showVoltage) overlayParts.add(if (unit) String.format("%.2fV", sample.voltageMv / 1000.0) else String.format("%.2f", sample.voltageMv / 1000.0))
+        if (SettingsStore.showTemp && sample.tempC > 0) overlayParts.add(if (unit) String.format("%.1f°C", sample.tempC) else String.format("%.1f", sample.tempC))
+        if (SettingsStore.showLevel) overlayParts.add(if (unit) "${sample.level}%" else "${sample.level}")
+
+        binding.tvPreviewOverlay.text = if (overlayParts.isEmpty()) sample.powerText() else overlayParts.joinToString("  ")
+        binding.tvPreviewOverlay.textSize = (SettingsStore.textSizeSp * 0.9f).coerceIn(10f, 18f)
+        binding.tvPreviewOverlay.setTextColor(SettingsStore.textColor)
+
+        when (SettingsStore.overlayStyle) {
+            SettingsStore.STYLE_CAPSULE_DARK -> binding.tvPreviewOverlay.background = ContextCompat.getDrawable(this, R.drawable.bg_capsule_dark)
+            SettingsStore.STYLE_CAPSULE_FROSTED -> binding.tvPreviewOverlay.background = ContextCompat.getDrawable(this, R.drawable.bg_capsule_frosted)
+            SettingsStore.STYLE_CAPSULE_OUTLINE -> binding.tvPreviewOverlay.background = ContextCompat.getDrawable(this, R.drawable.bg_capsule_outline)
+            SettingsStore.STYLE_CAPSULE_LIGHT -> binding.tvPreviewOverlay.background = ContextCompat.getDrawable(this, R.drawable.bg_capsule_light)
+            else -> {
+                binding.tvPreviewOverlay.setBackgroundColor(Color.TRANSPARENT)
+            }
+        }
+
+        // 2. 状态栏时钟与内嵌文本预览
+        if (!SettingsStore.hookEnabled) {
+            binding.tvPreviewClockLeft.visibility = View.GONE
+            binding.tvPreviewClockRight.visibility = View.GONE
+        } else {
+            val hookParts = mutableListOf<String>()
+            if (SettingsStore.hookShowPower) hookParts.add(if (unit) sample.powerText() else sample.powerText().removeSuffix("W"))
+            if (SettingsStore.hookShowCurrent) {
+                val ma = abs(sample.currentMa)
+                val str = if (ma >= 1000) String.format("%.2fA", sample.currentMa / 1000.0) else "${sample.currentMa}mA"
+                hookParts.add(if (unit) str else str.replace("mA", "").replace("A", ""))
+            }
+            if (SettingsStore.hookShowVoltage) hookParts.add(if (unit) String.format("%.2fV", sample.voltageMv / 1000.0) else String.format("%.2f", sample.voltageMv / 1000.0))
+            if (SettingsStore.hookShowTemp && sample.tempC > 0) hookParts.add(if (unit) String.format("%.1f°C", sample.tempC) else String.format("%.1f", sample.tempC))
+            if (SettingsStore.hookShowLevel) hookParts.add(if (unit) "${sample.level}%" else "${sample.level}")
+
+            val hookText = if (hookParts.isEmpty()) sample.powerText() else hookParts.joinToString(" ")
+            val isLeft = SettingsStore.hookSide == 1
+
+            val targetTv = if (isLeft) binding.tvPreviewClockLeft else binding.tvPreviewClockRight
+            val hiddenTv = if (isLeft) binding.tvPreviewClockRight else binding.tvPreviewClockLeft
+
+            hiddenTv.visibility = View.GONE
+            targetTv.visibility = View.VISIBLE
+            targetTv.text = hookText
+            targetTv.textSize = SettingsStore.hookTextSizeSp.coerceIn(9f, 16f)
+
+            if (SettingsStore.hookAdaptColor) {
+                targetTv.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+            } else {
+                targetTv.setTextColor(SettingsStore.hookTextColor)
+            }
+
+            targetTv.translationX = (SettingsStore.hookOffsetX / 4f).coerceIn(-20f, 20f)
+            targetTv.translationY = (SettingsStore.hookOffsetY / 4f).coerceIn(-10f, 10f)
+        }
     }
 
     // -------------------------------------------------------------
@@ -113,46 +201,101 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 位置锁定
-        updateLockBtnText()
         binding.btnOverlayLock.setOnClickListener {
             SettingsStore.overlayLocked = !SettingsStore.overlayLocked
             updateLockBtnText()
             Toast.makeText(
                 this,
-                if (SettingsStore.overlayLocked) "悬浮窗位置已锁定" else "悬浮窗位置已解锁，可自由拖动",
+                if (SettingsStore.overlayLocked) "悬浮窗位置已锁定（防误触拖动）" else "悬浮窗位置已解锁，可自由拖拽",
                 Toast.LENGTH_SHORT
             ).show()
         }
 
-        // 居中重置
         binding.btnOverlayReset.setOnClickListener {
             val dm = resources.displayMetrics
-            SettingsStore.overlayX = (dm.widthPixels / 2) - dp(80)
-            SettingsStore.overlayY = dp(80)
+            SettingsStore.overlayX = (dm.widthPixels / 2) - dp(75)
+            SettingsStore.overlayY = dp(70)
             OverlayService.reload(this)
             Toast.makeText(this, "悬浮窗已复位至顶部居中", Toast.LENGTH_SHORT).show()
         }
 
-        // 背景风格
+        binding.swOverlaySnap.isChecked = SettingsStore.overlaySnapEdge
+        binding.swOverlaySnap.setOnCheckedChangeListener { _, checked ->
+            SettingsStore.overlaySnapEdge = checked
+            OverlayService.reload(this)
+        }
+
+        binding.swOverlayBoot.isChecked = SettingsStore.bootStartOverlay
+        binding.swOverlayBoot.setOnCheckedChangeListener { _, checked ->
+            SettingsStore.bootStartOverlay = checked
+        }
+
+        // 外观胶囊风格单选
         when (SettingsStore.overlayStyle) {
             SettingsStore.STYLE_CAPSULE_FROSTED -> binding.toggleStyle.check(R.id.btn_style_frosted)
+            SettingsStore.STYLE_CAPSULE_DARK -> binding.toggleStyle.check(R.id.btn_style_dark)
+            SettingsStore.STYLE_CAPSULE_LIGHT -> binding.toggleStyle.check(R.id.btn_style_light)
             SettingsStore.STYLE_CAPSULE_OUTLINE -> binding.toggleStyle.check(R.id.btn_style_outline)
-            SettingsStore.STYLE_TRANSPARENT -> binding.toggleStyle.check(R.id.btn_style_transparent)
-            else -> binding.toggleStyle.check(R.id.btn_style_dark)
+            else -> binding.toggleStyle.check(R.id.btn_style_transparent)
         }
+
         binding.toggleStyle.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
             when (checkedId) {
-                R.id.btn_style_dark -> SettingsStore.overlayStyle = SettingsStore.STYLE_CAPSULE_DARK
                 R.id.btn_style_frosted -> SettingsStore.overlayStyle = SettingsStore.STYLE_CAPSULE_FROSTED
+                R.id.btn_style_dark -> SettingsStore.overlayStyle = SettingsStore.STYLE_CAPSULE_DARK
+                R.id.btn_style_light -> SettingsStore.overlayStyle = SettingsStore.STYLE_CAPSULE_LIGHT
                 R.id.btn_style_outline -> SettingsStore.overlayStyle = SettingsStore.STYLE_CAPSULE_OUTLINE
                 R.id.btn_style_transparent -> SettingsStore.overlayStyle = SettingsStore.STYLE_TRANSPARENT
             }
             OverlayService.reload(this)
+            updatePreview()
         }
 
-        // 显示数据项 Chips
+        // 显示项 Chips
+        setupOverlayChips()
+
+        // 字号滑块
+        binding.sliderTextSize.value = SettingsStore.textSizeSp.coerceIn(8f, 28f)
+        binding.tvTextSizeVal.text = "${SettingsStore.textSizeSp.toInt()}sp"
+        binding.sliderTextSize.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) {
+                SettingsStore.textSizeSp = value
+                binding.tvTextSizeVal.text = "${value.toInt()}sp"
+                OverlayService.reload(this)
+                updatePreview()
+            }
+        }
+
+        // 文字颜色预览与调色盘
+        updateOverlayColorPreview()
+        binding.btnOverlayColor.setOnClickListener {
+            ColorPickerDialog.show(this, SettingsStore.textColor) { pickedColor ->
+                SettingsStore.textColor = pickedColor
+                updateOverlayColorPreview()
+                OverlayService.reload(this)
+                updatePreview()
+            }
+        }
+
+        // 刷新率
+        when (SettingsStore.refreshMs) {
+            500L -> binding.toggleRefreshMs.check(R.id.btn_refresh_500)
+            2000L -> binding.toggleRefreshMs.check(R.id.btn_refresh_2000)
+            else -> binding.toggleRefreshMs.check(R.id.btn_refresh_1000)
+        }
+        binding.toggleRefreshMs.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            when (checkedId) {
+                R.id.btn_refresh_500 -> SettingsStore.refreshMs = 500L
+                R.id.btn_refresh_1000 -> SettingsStore.refreshMs = 1000L
+                R.id.btn_refresh_2000 -> SettingsStore.refreshMs = 2000L
+            }
+            OverlayService.reload(this)
+        }
+    }
+
+    private fun setupOverlayChips() {
         binding.chipPower.isChecked = SettingsStore.showPower
         binding.chipCurrent.isChecked = SettingsStore.showCurrent
         binding.chipVoltage.isChecked = SettingsStore.showVoltage
@@ -160,229 +303,213 @@ class MainActivity : AppCompatActivity() {
         binding.chipTemp.isChecked = SettingsStore.showTemp
         binding.chipUnit.isChecked = SettingsStore.showUnit
 
-        binding.chipPower.setOnCheckedChangeListener { _, b -> SettingsStore.showPower = b; OverlayService.reload(this) }
-        binding.chipCurrent.setOnCheckedChangeListener { _, b -> SettingsStore.showCurrent = b; OverlayService.reload(this) }
-        binding.chipVoltage.setOnCheckedChangeListener { _, b -> SettingsStore.showVoltage = b; OverlayService.reload(this) }
-        binding.chipLevel.setOnCheckedChangeListener { _, b -> SettingsStore.showLevel = b; OverlayService.reload(this) }
-        binding.chipTemp.setOnCheckedChangeListener { _, b -> SettingsStore.showTemp = b; OverlayService.reload(this) }
-        binding.chipUnit.setOnCheckedChangeListener { _, b -> SettingsStore.showUnit = b; OverlayService.reload(this) }
+        binding.chipPower.setOnCheckedChangeListener { _, c -> SettingsStore.showPower = c; notifyOverlay() }
+        binding.chipCurrent.setOnCheckedChangeListener { _, c -> SettingsStore.showCurrent = c; notifyOverlay() }
+        binding.chipVoltage.setOnCheckedChangeListener { _, c -> SettingsStore.showVoltage = c; notifyOverlay() }
+        binding.chipLevel.setOnCheckedChangeListener { _, c -> SettingsStore.showLevel = c; notifyOverlay() }
+        binding.chipTemp.setOnCheckedChangeListener { _, c -> SettingsStore.showTemp = c; notifyOverlay() }
+        binding.chipUnit.setOnCheckedChangeListener { _, c -> SettingsStore.showUnit = c; notifyOverlay() }
+    }
 
-        // 字号 Slider
-        binding.sliderTextSize.value = SettingsStore.textSizeSp.coerceIn(8f, 24f)
-        binding.tvTextSizeLabel.text = "字号 ${SettingsStore.textSizeSp.toInt()}sp"
-        binding.sliderTextSize.addOnChangeListener { _, value, _ ->
-            SettingsStore.textSizeSp = value
-            binding.tvTextSizeLabel.text = "字号 ${value.toInt()}sp"
-            OverlayService.reload(this)
-        }
-
-        // 颜色选择器
-        updateOverlayColorPreview()
-        binding.btnColorPicker.setOnClickListener {
-            ColorPickerDialog.show(this, SettingsStore.textColor) { picked ->
-                SettingsStore.textColor = picked
-                updateOverlayColorPreview()
-                OverlayService.reload(this)
-            }
-        }
-
-        // 刷新频率 Toggle
-        when (SettingsStore.refreshMs) {
-            500L -> binding.toggleFreq.check(R.id.btn_freq_500)
-            2000L -> binding.toggleFreq.check(R.id.btn_freq_2000)
-            else -> binding.toggleFreq.check(R.id.btn_freq_1000)
-        }
-        binding.toggleFreq.addOnButtonCheckedListener { _, checkedId, isChecked ->
-            if (!isChecked) return@addOnButtonCheckedListener
-            when (checkedId) {
-                R.id.btn_freq_500 -> SettingsStore.refreshMs = 500L
-                R.id.btn_freq_2000 -> SettingsStore.refreshMs = 2000L
-                else -> SettingsStore.refreshMs = 1000L
-            }
-            OverlayService.reload(this)
-        }
+    private fun notifyOverlay() {
+        OverlayService.reload(this)
+        updatePreview()
     }
 
     private fun updateLockBtnText() {
-        binding.btnOverlayLock.text = if (SettingsStore.overlayLocked) "已锁定 (不可拖动)" else "已解锁 (可自由拖动)"
+        binding.btnOverlayLock.text = if (SettingsStore.overlayLocked) "已锁定 (点击解锁)" else "锁定位置"
     }
 
     private fun updateOverlayColorPreview() {
-        val d = GradientDrawable().apply {
+        val color = SettingsStore.textColor
+        val shape = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(SettingsStore.textColor)
-            setStroke(dp(1), 0x55FFFFFF)
+            setColor(color)
+            setStroke(dp(1), 0x33000000)
         }
-        binding.viewColorPreview.background = d
+        binding.viewOverlayColorPreview.background = shape
     }
 
     // -------------------------------------------------------------
-    // 3. 状态栏 Hook 控制
+    // 3. 状态栏 Hook 控制 (LSPosed 模块)
     // -------------------------------------------------------------
     private fun setupHookCard() {
-        binding.swHookEnabled.isChecked = SettingsStore.hookEnabled
-        binding.swHookEnabled.setOnCheckedChangeListener { _, b ->
-            SettingsStore.hookEnabled = b
+        binding.swHook.isChecked = SettingsStore.hookEnabled
+        binding.swHook.setOnCheckedChangeListener { _, checked ->
+            SettingsStore.hookEnabled = checked
+            updatePreview()
         }
 
         // 锚点选择
-        when (SettingsStore.hookSide) {
-            SettingsStore.ANCHOR_CLOCK_LEFT -> binding.toggleHookAnchor.check(R.id.btn_anchor_clock_left)
-            SettingsStore.ANCHOR_STATUSBAR_RIGHT -> binding.toggleHookAnchor.check(R.id.btn_anchor_sb_right)
-            SettingsStore.ANCHOR_STATUSBAR_LEFT -> binding.toggleHookAnchor.check(R.id.btn_anchor_sb_left)
-            else -> binding.toggleHookAnchor.check(R.id.btn_anchor_clock_right)
+        if (SettingsStore.hookSide == 1) {
+            binding.toggleHookSide.check(R.id.btn_hook_side_left)
+        } else {
+            binding.toggleHookSide.check(R.id.btn_hook_side_right)
         }
-        binding.toggleHookAnchor.addOnButtonCheckedListener { _, checkedId, isChecked ->
+        binding.toggleHookSide.addOnButtonCheckedListener { _, checkedId, isChecked ->
             if (!isChecked) return@addOnButtonCheckedListener
-            when (checkedId) {
-                R.id.btn_anchor_clock_left -> SettingsStore.hookSide = SettingsStore.ANCHOR_CLOCK_LEFT
-                R.id.btn_anchor_sb_right -> SettingsStore.hookSide = SettingsStore.ANCHOR_STATUSBAR_RIGHT
-                R.id.btn_anchor_sb_left -> SettingsStore.hookSide = SettingsStore.ANCHOR_STATUSBAR_LEFT
-                else -> SettingsStore.hookSide = SettingsStore.ANCHOR_CLOCK_RIGHT
+            SettingsStore.hookSide = if (checkedId == R.id.btn_hook_side_left) 1 else 0
+            updatePreview()
+        }
+
+        // 水平微调
+        binding.sliderHookOffsetX.value = SettingsStore.hookOffsetX.toFloat().coerceIn(-100f, 100f)
+        binding.tvOffsetXVal.text = "${SettingsStore.hookOffsetX} px"
+        binding.sliderHookOffsetX.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) {
+                SettingsStore.hookOffsetX = value.toInt()
+                binding.tvOffsetXVal.text = "${value.toInt()} px"
+                updatePreview()
+            }
+        }
+        binding.btnOffsetXMinus.setOnClickListener {
+            val v = (SettingsStore.hookOffsetX - 5).coerceIn(-100, 100)
+            SettingsStore.hookOffsetX = v
+            binding.sliderHookOffsetX.value = v.toFloat()
+            binding.tvOffsetXVal.text = "$v px"
+            updatePreview()
+        }
+        binding.btnOffsetXPlus.setOnClickListener {
+            val v = (SettingsStore.hookOffsetX + 5).coerceIn(-100, 100)
+            SettingsStore.hookOffsetX = v
+            binding.sliderHookOffsetX.value = v.toFloat()
+            binding.tvOffsetXVal.text = "$v px"
+            updatePreview()
+        }
+
+        // 垂直微调
+        binding.sliderHookOffsetY.value = SettingsStore.hookOffsetY.toFloat().coerceIn(-60f, 60f)
+        binding.tvOffsetYVal.text = "${SettingsStore.hookOffsetY} px"
+        binding.sliderHookOffsetY.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) {
+                SettingsStore.hookOffsetY = value.toInt()
+                binding.tvOffsetYVal.text = "${value.toInt()} px"
+                updatePreview()
+            }
+        }
+        binding.btnOffsetYMinus.setOnClickListener {
+            val v = (SettingsStore.hookOffsetY - 2).coerceIn(-60, 60)
+            SettingsStore.hookOffsetY = v
+            binding.sliderHookOffsetY.value = v.toFloat()
+            binding.tvOffsetYVal.text = "$v px"
+            updatePreview()
+        }
+        binding.btnOffsetYPlus.setOnClickListener {
+            val v = (SettingsStore.hookOffsetY + 2).coerceIn(-60, 60)
+            SettingsStore.hookOffsetY = v
+            binding.sliderHookOffsetY.value = v.toFloat()
+            binding.tvOffsetYVal.text = "$v px"
+            updatePreview()
+        }
+
+        // 状态栏颜色自适应
+        binding.swHookAdaptColor.isChecked = SettingsStore.hookAdaptColor
+        binding.layoutHookCustomColor.visibility = if (SettingsStore.hookAdaptColor) View.GONE else View.VISIBLE
+        binding.swHookAdaptColor.setOnCheckedChangeListener { _, checked ->
+            SettingsStore.hookAdaptColor = checked
+            binding.layoutHookCustomColor.visibility = if (checked) View.GONE else View.VISIBLE
+            updatePreview()
+        }
+
+        updateHookColorPreview()
+        binding.btnHookColor.setOnClickListener {
+            ColorPickerDialog.show(this, SettingsStore.hookTextColor) { picked ->
+                SettingsStore.hookTextColor = picked
+                updateHookColorPreview()
+                updatePreview()
             }
         }
 
-        // 水平微调 Slider 与步进加减
-        syncHookOx(SettingsStore.hookOffsetX)
-        binding.sliderHookOx.addOnChangeListener { _, value, _ ->
-            SettingsStore.hookOffsetX = value.toInt()
-            binding.tvHookOxLabel.text = "水平 ${value.toInt()}px"
-        }
-        binding.btnHookOxMinus.setOnClickListener {
-            val next = (SettingsStore.hookOffsetX - 10).coerceIn(-500, 500)
-            syncHookOx(next)
-        }
-        binding.btnHookOxPlus.setOnClickListener {
-            val next = (SettingsStore.hookOffsetX + 10).coerceIn(-500, 500)
-            syncHookOx(next)
+        // 状态栏字号
+        binding.sliderHookSize.value = SettingsStore.hookTextSizeSp.coerceIn(8f, 20f)
+        binding.tvHookSizeVal.text = "${SettingsStore.hookTextSizeSp.toInt()}sp"
+        binding.sliderHookSize.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) {
+                SettingsStore.hookTextSizeSp = value
+                binding.tvHookSizeVal.text = "${value.toInt()}sp"
+                updatePreview()
+            }
         }
 
-        // 垂直微调 Slider 与步进加减
-        syncHookOy(SettingsStore.hookOffsetY)
-        binding.sliderHookOy.addOnChangeListener { _, value, _ ->
-            SettingsStore.hookOffsetY = value.toInt()
-            binding.tvHookOyLabel.text = "垂直 ${value.toInt()}px"
-        }
-        binding.btnHookOyMinus.setOnClickListener {
-            val next = (SettingsStore.hookOffsetY - 5).coerceIn(-200, 200)
-            syncHookOy(next)
-        }
-        binding.btnHookOyPlus.setOnClickListener {
-            val next = (SettingsStore.hookOffsetY + 5).coerceIn(-200, 200)
-            syncHookOy(next)
-        }
-
-        // 一键复位偏移
-        binding.btnHookResetOffset.setOnClickListener {
-            syncHookOx(0)
-            syncHookOy(0)
-            Toast.makeText(this, "状态栏偏移已归零 (0, 0)", Toast.LENGTH_SHORT).show()
-        }
-
-        // Hook 显示项 Chips
+        // 状态栏显示项
         binding.chipHookPower.isChecked = SettingsStore.hookShowPower
         binding.chipHookCurrent.isChecked = SettingsStore.hookShowCurrent
         binding.chipHookVoltage.isChecked = SettingsStore.hookShowVoltage
         binding.chipHookLevel.isChecked = SettingsStore.hookShowLevel
         binding.chipHookTemp.isChecked = SettingsStore.hookShowTemp
 
-        binding.chipHookPower.setOnCheckedChangeListener { _, b -> SettingsStore.hookShowPower = b }
-        binding.chipHookCurrent.setOnCheckedChangeListener { _, b -> SettingsStore.hookShowCurrent = b }
-        binding.chipHookVoltage.setOnCheckedChangeListener { _, b -> SettingsStore.hookShowVoltage = b }
-        binding.chipHookLevel.setOnCheckedChangeListener { _, b -> SettingsStore.hookShowLevel = b }
-        binding.chipHookTemp.setOnCheckedChangeListener { _, b -> SettingsStore.hookShowTemp = b }
-
-        // 字号 Slider
-        binding.sliderHookSize.value = SettingsStore.hookTextSizeSp.coerceIn(8f, 20f)
-        binding.tvHookSizeLabel.text = "字号 ${SettingsStore.hookTextSizeSp.toInt()}sp"
-        binding.sliderHookSize.addOnChangeListener { _, value, _ ->
-            SettingsStore.hookTextSizeSp = value
-            binding.tvHookSizeLabel.text = "字号 ${value.toInt()}sp"
-        }
-
-        // 自适应颜色 CheckBox 与调色按钮
-        binding.cbHookAdaptColor.isChecked = SettingsStore.hookAdaptColor
-        binding.cbHookAdaptColor.setOnCheckedChangeListener { _, b ->
-            SettingsStore.hookAdaptColor = b
-        }
-        binding.btnHookColorPicker.setOnClickListener {
-            ColorPickerDialog.show(this, SettingsStore.hookTextColor) { picked ->
-                SettingsStore.hookTextColor = picked
-                SettingsStore.hookAdaptColor = false
-                binding.cbHookAdaptColor.isChecked = false
-            }
-        }
+        binding.chipHookPower.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowPower = c; updatePreview() }
+        binding.chipHookCurrent.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowCurrent = c; updatePreview() }
+        binding.chipHookVoltage.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowVoltage = c; updatePreview() }
+        binding.chipHookLevel.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowLevel = c; updatePreview() }
+        binding.chipHookTemp.setOnCheckedChangeListener { _, c -> SettingsStore.hookShowTemp = c; updatePreview() }
 
         // 重启 SystemUI
-        binding.btnRestartSui.setOnClickListener {
-            Toast.makeText(this, "正在请求 Root 重启 SystemUI...", Toast.LENGTH_SHORT).show()
-            kotlin.concurrent.thread {
-                val ok = RootHelper.exec("pkill -f com.android.systemui") != null
-                runOnUiThread {
-                    Toast.makeText(
-                        this,
-                        if (ok) "SystemUI 已重启，Hook 模块已重新加载" else "重启失败，请检查是否授予 Root 权限",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
+        binding.btnRestartSystemui.setOnClickListener {
+            restartSystemUI()
         }
     }
 
-    private fun syncHookOx(value: Int) {
-        val clamped = value.coerceIn(-500, 500)
-        SettingsStore.hookOffsetX = clamped
-        binding.sliderHookOx.value = clamped.toFloat()
-        binding.tvHookOxLabel.text = "水平 ${clamped}px"
+    private fun updateHookColorPreview() {
+        val color = SettingsStore.hookTextColor
+        val shape = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+            setStroke(dp(1), 0x33000000)
+        }
+        binding.viewHookColorPreview.background = shape
     }
 
-    private fun syncHookOy(value: Int) {
-        val clamped = value.coerceIn(-200, 200)
-        SettingsStore.hookOffsetY = clamped
-        binding.sliderHookOy.value = clamped.toFloat()
-        binding.tvHookOyLabel.text = "垂直 ${clamped}px"
+    private fun restartSystemUI() {
+        Toast.makeText(this, "正在请求 Root 重启 SystemUI...", Toast.LENGTH_SHORT).show()
+        Thread {
+            val ok = RootHelper.exec("pkill -f com.android.systemui") != null
+            runOnUiThread {
+                if (ok) {
+                    Toast.makeText(this, "SystemUI 重启指令已发送", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "重启失败，请确认是否已授予 Root 权限", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     // -------------------------------------------------------------
-    // 4. 高级与系统设置
+    // 4. 高级硬件适配卡片
     // -------------------------------------------------------------
     private fun setupAdvancedCard() {
-        binding.swBootStart.isChecked = SettingsStore.bootStartOverlay
-        binding.swBootStart.setOnCheckedChangeListener { _, b ->
-            SettingsStore.bootStartOverlay = b
+        binding.swPolarityInvert.isChecked = SettingsStore.polarityInvert
+        binding.swPolarityInvert.setOnCheckedChangeListener { _, checked ->
+            SettingsStore.polarityInvert = checked
+            updateDashboard()
+            updatePreview()
+            OverlayService.reload(this)
         }
 
         binding.swDoubleCell.isChecked = SettingsStore.doubleCellFix
-        binding.swDoubleCell.setOnCheckedChangeListener { _, b ->
-            SettingsStore.doubleCellFix = b
+        binding.swDoubleCell.setOnCheckedChangeListener { _, checked ->
+            SettingsStore.doubleCellFix = checked
             updateDashboard()
+            updatePreview()
             OverlayService.reload(this)
-        }
-
-        binding.swPolarityInvert.isChecked = SettingsStore.polarityInvert
-        binding.swPolarityInvert.setOnCheckedChangeListener { _, b ->
-            SettingsStore.polarityInvert = b
-            updateDashboard()
-            OverlayService.reload(this)
-        }
-
-        binding.btnDiagnostic.setOnClickListener {
-            startActivity(Intent(this, DiagnosticActivity::class.java))
         }
     }
 
     private fun refreshOverlaySwitchState() {
-        binding.swOverlay.isChecked =
-            Settings.canDrawOverlays(this) &&
-                    ContextCompat.getSystemService(this, android.app.NotificationManager::class.java) != null
+        binding.swOverlay.isChecked = Settings.canDrawOverlays(this) && isServiceRunning()
+    }
+
+    private fun isServiceRunning(): Boolean {
+        return SettingsStore.sp(this).getBoolean("overlay_service_active", false)
     }
 
     private fun requestNotifPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
         }
     }
 

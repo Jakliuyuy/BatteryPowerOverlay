@@ -2,7 +2,6 @@ package com.jakliuyuy.batterypower.hook
 
 import android.content.Context
 import android.database.ContentObserver
-import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -10,17 +9,15 @@ import android.os.Looper
 import com.jakliuyuy.batterypower.config.ConfigProvider
 
 /**
- * Hook 侧配置桥：SystemUI 进程内拉取配置与持久化镜像管理。
- *
- * 核心升级：
- * 1. 采用 SystemUI 的 Device Protected Storage 作为本地无锁缓存（CACHE_SP），
- *    保证手机刚开机（Direct Boot 阶段 / 用户未解锁）即可 100% 恢复上次记忆位置与样式。
- * 2. 写入缓存时强制 commit() 立即刷盘。
- * 3. 注册 ContentObserver 监听主应用配置变更，毫秒级即时生效，无需单纯依赖 1s 轮询。
+ * SystemUI 进程配置桥接器：
+ * 1. 采用 SystemUI 自身的 Device Protected Storage (无锁设备保护存储) 作为本地镜像缓存，
+ *    确保手机重启开机（Direct Boot / 用户未输入锁屏密码前）100% 能够读取到上次的记忆配置。
+ * 2. 写入配置时强制 commit() 同步落盘，永久记忆不丢失。
+ * 3. 注册 ContentObserver 实时监听，主应用调节参数毫秒级即时生效。
  */
 object ConfigBridge {
 
-    private const val CACHE_SP = "battery_power_hook_cache"
+    private const val CACHE_SP = "battery_power_systemui_cache"
 
     @Volatile
     private var memoryCache: Map<String, String>? = null
@@ -38,7 +35,7 @@ object ConfigBridge {
         }
     }
 
-    /** 注册 ContentObserver 监听主 App 配置变动，实现零延迟热重载 */
+    /** 注册 ContentObserver 监听配置变动 */
     fun ensureObserver(ctx: Context, onConfigUpdate: (Map<String, String>) -> Unit) {
         if (isObserverRegistered) return
         try {
@@ -68,16 +65,18 @@ object ConfigBridge {
                 nextRetryAt = 0
                 return fresh
             }
-            // provider 暂时不可用（主 app 未启动或手机刚开机）：5 秒节流重试
-            nextRetryAt = now + 5_000
+            // 节流，避免在开机未准备好时持续疯狂查询
+            nextRetryAt = now + 4000
         }
-        // 兜底顺序：内存缓存 -> 本地磁盘缓存（开机重启即刻可读） -> 默认空表
+
         memoryCache?.let { return it }
+
         val disk = loadFromDisk(ctx)
         if (disk != null) {
             memoryCache = disk
             return disk
         }
+
         return emptyMap()
     }
 
@@ -88,14 +87,13 @@ object ConfigBridge {
                 null, null, null, null
             ) ?: return emptyMap()
             cursor.use { c ->
-                val nonNullCursor = c ?: return emptyMap()
-                if (!nonNullCursor.moveToFirst()) return emptyMap()
-                val kIdx = nonNullCursor.getColumnIndexOrThrow("key")
-                val vIdx = nonNullCursor.getColumnIndexOrThrow("value")
+                if (!c.moveToFirst()) return emptyMap()
+                val kIdx = c.getColumnIndexOrThrow("key")
+                val vIdx = c.getColumnIndexOrThrow("value")
                 val map = HashMap<String, String>()
                 do {
-                    map[nonNullCursor.getString(kIdx)] = nonNullCursor.getString(vIdx)
-                } while (nonNullCursor.moveToNext())
+                    map[c.getString(kIdx)] = c.getString(vIdx)
+                } while (c.moveToNext())
                 map
             }
         } catch (_: Exception) {
@@ -103,7 +101,6 @@ object ConfigBridge {
         }
     }
 
-    /** 写入 SystemUI 进程自己的 SharedPreferences（使用 commit 同步落盘，跨重启永久记忆） */
     private fun saveToDisk(ctx: Context, cfg: Map<String, String>) {
         try {
             val dpCtx = getDeviceProtectedContext(ctx)
@@ -133,8 +130,6 @@ object ConfigBridge {
             null
         }
     }
-
-    // ---- 便捷读取工具 ----
 
     fun intOf(cfg: Map<String, String>, key: String, def: Int): Int =
         cfg[key]?.toIntOrNull() ?: def

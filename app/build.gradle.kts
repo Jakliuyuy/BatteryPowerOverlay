@@ -64,4 +64,5 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
     compileOnly("de.robv.android.xposed:api:82")
+    testImplementation("junit:junit:4.13.2")
 }

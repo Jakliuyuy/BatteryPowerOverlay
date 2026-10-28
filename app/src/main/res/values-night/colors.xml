@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand Colors (Dark Mode Adaptation) -->
+    <color name="primary">#4ADE80</color>
+    <color name="on_primary">#003920</color>
+    <color name="primary_container">#005230</color>
+    <color name="on_primary_container">#82F9A3</color>
+
+    <color name="secondary">#60A5FA</color>
+    <color name="on_secondary">#00315C</color>
+    <color name="secondary_container">#004782</color>
+    <color name="on_secondary_container">#BED7FF</color>
+
+    <color name="tertiary">#FBBF24</color>
+    <color name="on_tertiary">#482900</color>
+    <color name="tertiary_container">#673D00</color>
+    <color name="on_tertiary_container">#FFDDB4</color>
+
+    <!-- Semantic Indicators -->
+    <color name="charging_green">#34D399</color>
+    <color name="charging_bg">#064E3B</color>
+    <color name="discharging_orange">#FBBF24</color>
+    <color name="discharging_bg">#451A03</color>
+    <color name="danger_red">#F87171</color>
+
+    <!-- Dark Theme Neutrals (Refined, Soft Dark, not harsh pitch-black) -->
+    <color name="app_background">#0F172A</color>
+    <color name="surface_card">#1E293B</color>
+    <color name="surface_variant">#334155</color>
+    <color name="card_stroke">#334155</color>
+    <color name="card_stroke_active">#4ADE80</color>
+
+    <color name="text_primary">#F8FAFC</color>
+    <color name="text_secondary">#CBD5E1</color>
+    <color name="text_tertiary">#64748B</color>
+
+    <!-- Floating Overlay Capsule Previews -->
+    <color name="capsule_dark_bg">#E6111827</color>
+    <color name="capsule_frosted_bg">#B31F2937</color>
+    <color name="capsule_light_bg">#33FFFFFF</color>
+</resources>

@@ -12,9 +12,10 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.jakliuyuy.batterypower.MainActivity
 import com.jakliuyuy.batterypower.R
+import com.jakliuyuy.batterypower.settings.SettingsStore
 
 /**
- * 悬浮窗前台服务：承载 BatteryOverlayView，保证后台平稳运行不被系统回收。
+ * 悬浮窗前台服务：承载 BatteryOverlayView，保证后台运行稳定不被系统清理。
  */
 class OverlayService : Service() {
 
@@ -26,6 +27,7 @@ class OverlayService : Service() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIF_ID, buildNotification())
+        SettingsStore.sp(this).edit().putBoolean(KEY_SERVICE_ACTIVE, true).commit()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -45,6 +47,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        SettingsStore.sp(this).edit().putBoolean(KEY_SERVICE_ACTIVE, false).commit()
         overlay?.detach()
         overlay = null
         super.onDestroy()
@@ -54,10 +57,10 @@ class OverlayService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "电池悬浮窗后台服务",
+                "电池功率悬浮窗",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "保证电池功率悬浮窗在后台持续运行"
+                description = "保持悬浮窗前台常驻与动力监测"
                 setShowBadge(false)
             }
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -73,7 +76,7 @@ class OverlayService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_battery)
             .setContentTitle("电池功率悬浮窗运行中")
-            .setContentText("点击打开配置面板")
+            .setContentText("点击进入 Material 3 控制中心")
             .setContentIntent(pi)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -84,6 +87,7 @@ class OverlayService : Service() {
         private const val NOTIF_ID = 1001
         private const val CHANNEL_ID = "battery_overlay_channel"
         const val ACTION_RELOAD = "com.jakliuyuy.batterypower.ACTION_RELOAD_OVERLAY"
+        const val KEY_SERVICE_ACTIVE = "overlay_service_active"
 
         fun start(ctx: Context) {
             val intent = Intent(ctx, OverlayService::class.java)

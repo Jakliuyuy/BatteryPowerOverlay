@@ -1,24 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Brand / Accent Colors -->
-    <color name="primary">#00C853</color>
-    <color name="primary_dark">#009624</color>
-    <color name="primary_light">#5EFA75</color>
-    <color name="primary_container">#1A00C853</color>
-    <color name="secondary">#2979FF</color>
-    <color name="secondary_container">#1A2979FF</color>
-    <color name="tertiary">#FF9100</color>
+    <!-- Brand / Accent Colors (Fresh, Modern Material 3 Palette) -->
+    <color name="primary">#0A8458</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="primary_container">#D1F5E4</color>
+    <color name="on_primary_container">#002113</color>
 
-    <!-- Semantic Tints -->
-    <color name="charging_green">#00E676</color>
-    <color name="discharging_orange">#FF9100</color>
-    <color name="danger_red">#FF5252</color>
+    <color name="secondary">#1976D2</color>
+    <color name="on_secondary">#FFFFFF</color>
+    <color name="secondary_container">#D9E7FF</color>
+    <color name="on_secondary_container">#001D36</color>
 
-    <!-- Neutral & Backgrounds -->
-    <color name="surface_dark">#121316</color>
-    <color name="card_dark">#1C1E22</color>
-    <color name="card_stroke_dark">#2C2F36</color>
-    <color name="text_primary">#F1F3F4</color>
-    <color name="text_secondary">#9AA0A6</color>
-    <color name="text_tertiary">#5F6368</color>
+    <color name="tertiary">#E65100</color>
+    <color name="on_tertiary">#FFFFFF</color>
+    <color name="tertiary_container">#FFECCF</color>
+    <color name="on_tertiary_container">#321000</color>
+
+    <!-- Semantic Indicators -->
+    <color name="charging_green">#10B981</color>
+    <color name="charging_bg">#E6F4EA</color>
+    <color name="discharging_orange">#F59E0B</color>
+    <color name="discharging_bg">#FEF3C7</color>
+    <color name="danger_red">#EF4444</color>
+
+    <!-- Light Theme Neutrals (Crisp, Natural & Clean) -->
+    <color name="app_background">#F8FAFC</color>
+    <color name="surface_card">#FFFFFF</color>
+    <color name="surface_variant">#F1F5F9</color>
+    <color name="card_stroke">#E2E8F0</color>
+    <color name="card_stroke_active">#0A8458</color>
+
+    <color name="text_primary">#0F172A</color>
+    <color name="text_secondary">#475569</color>
+    <color name="text_tertiary">#94A3B8</color>
+
+    <!-- Floating Overlay Capsule Previews -->
+    <color name="capsule_dark_bg">#D9000000</color>
+    <color name="capsule_frosted_bg">#A6212529</color>
+    <color name="capsule_light_bg">#E6FFFFFF</color>
 </resources>

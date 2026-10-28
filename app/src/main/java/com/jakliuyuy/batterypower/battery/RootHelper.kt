@@ -3,28 +3,35 @@ package com.jakliuyuy.batterypower.battery
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
-import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 
 /**
- * root 通道（KernelSU / APatch / Magisk 兼容）：
- *
- * 核心设计：
- * 1. 常驻 su shell 进程池会话，避免高频启动新 su 进程引发的系统限流或卡死。
- * 2. 管道安全机制：带标记位（MARKER）的行读取，超时（默认 2500ms）后自动重置会话，防止脏数据累积。
- * 3. 增强型电池节点探测，支持标准 battery、qcom-battery 等多路径备选。
+ * 高性能 Root 通道（KernelSU / APatch / Magisk 兼容）：
+ * 1. 采用常驻 su shell 会话复用，彻底避免频繁 fork su 进程引发的高负载和系统限流。
+ * 2. 键值标签式（Key-Value）结构化输出，即使部分内核节点缺失也绝不错位。
+ * 3. 自动探测多种电池节点路径（battery, qcom-battery, bms 等）。
+ * 4. 电流单位智能自适应（自动识别 μA 与 mA）。
  */
 object RootHelper {
 
     data class BatteryRaw(
-        val powerUw: Long?,    // μW，power_now 直读（优先）
-        val currentMa: Int?,   // mA
+        val powerUw: Long?,    // μW，power_now 直读
+        val currentMa: Int?,   // 经过智能识别换算后的 mA
         val voltageUv: Int?,   // μV
         val capacity: Int,     // %
         val tempC: Double,     // °C
         val status: String     // Charging / Discharging / Full
     )
 
-    private const val BASE_BATTERY = "/sys/class/power_supply/battery"
+    private val BATTERY_CANDIDATE_PATHS = listOf(
+        "/sys/class/power_supply/battery",
+        "/sys/class/power_supply/qcom-battery",
+        "/sys/class/power_supply/bms",
+        "/sys/class/power_supply/main-battery"
+    )
+
+    @Volatile
+    private var detectedBasePath: String = BATTERY_CANDIDATE_PATHS[0]
 
     @Volatile
     private var suProcess: Process? = null
@@ -39,8 +46,8 @@ object RootHelper {
     @Synchronized
     fun ensureSession(): Boolean {
         val now = System.currentTimeMillis()
-        if (sessionFailed && now - lastFailTime < 5000) {
-            return false // 失败后 5 秒退避，防止频繁狂拉
+        if (sessionFailed && now - lastFailTime < 4000) {
+            return false
         }
 
         if (suProcess?.isAlive == true && suWriter != null && suReader != null) {
@@ -56,7 +63,7 @@ object RootHelper {
             suWriter = p.outputStream
             suReader = BufferedReader(InputStreamReader(p.inputStream))
 
-            val idCheck = execInternal("id", 3000)
+            val idCheck = execInternal("id", 2500)
             val ok = idCheck?.contains("uid=0") == true
             if (!ok) {
                 sessionFailed = true
@@ -65,6 +72,7 @@ object RootHelper {
                 false
             } else {
                 sessionFailed = false
+                probeWorkingPath()
                 true
             }
         } catch (_: Exception) {
@@ -75,9 +83,16 @@ object RootHelper {
         }
     }
 
-    /**
-     * 在常驻会话内执行命令并等待结果。
-     */
+    private fun probeWorkingPath() {
+        for (path in BATTERY_CANDIDATE_PATHS) {
+            val out = execInternal("[ -d $path ] && echo OK", 1000)
+            if (out?.contains("OK") == true) {
+                detectedBasePath = path
+                break
+            }
+        }
+    }
+
     @Synchronized
     fun exec(cmd: String): String? {
         if (!ensureSession()) return null
@@ -88,7 +103,7 @@ object RootHelper {
         val w = suWriter ?: return null
         val r = suReader ?: return null
         return try {
-            val marker = "BP_DONE_${System.nanoTime()}"
+            val marker = "BP_MARKER_${System.nanoTime()}"
             val payload = "$cmd\necho $marker\n"
             w.write(payload.toByteArray())
             w.flush()
@@ -104,10 +119,9 @@ object RootHelper {
                     }
                     sb.appendLine(line)
                 } else {
-                    Thread.sleep(15)
+                    Thread.sleep(10)
                 }
             }
-            // 超时：可能处于阻塞状态，销毁并重置当前会话
             destroy()
             null
         } catch (_: Exception) {
@@ -116,31 +130,58 @@ object RootHelper {
         }
     }
 
-    /** 读取电池基础参数 */
+    /**
+     * 结构化读取电池基础数据
+     */
     fun read(): BatteryRaw? {
-        val cmd = "cat $BASE_BATTERY/power_now $BASE_BATTERY/current_now $BASE_BATTERY/voltage_now $BASE_BATTERY/temp $BASE_BATTERY/capacity $BASE_BATTERY/status 2>/dev/null"
+        val path = detectedBasePath
+        // 采用标签输出，彻底根绝缺行导致的字段错位
+        val cmd = "for f in power_now current_now voltage_now temp capacity status; do " +
+                "v=\$(cat $path/\$f 2>/dev/null); echo \"\$f:\$v\"; done"
         val out = exec(cmd) ?: return null
-        val lines = out.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        if (lines.isEmpty()) return null
 
-        val nums = lines.mapNotNull { it.toLongOrNull() }
-        val statusLine = lines.lastOrNull { it.toLongOrNull() == null } ?: "Discharging"
+        val map = HashMap<String, String>()
+        for (line in out.lines()) {
+            val idx = line.indexOf(':')
+            if (idx != -1) {
+                val k = line.substring(0, idx).trim()
+                val v = line.substring(idx + 1).trim()
+                map[k] = v
+            }
+        }
 
-        if (nums.size < 3) return null
+        val rawCurrent = map["current_now"]?.toLongOrNull()
+        val rawVoltage = map["voltage_now"]?.toIntOrNull()
+        val rawPower = map["power_now"]?.toLongOrNull()
+        val rawTemp = map["temp"]?.toDoubleOrNull() ?: 0.0
+        val rawCap = map["capacity"]?.toIntOrNull() ?: 0
+        val rawStatus = map["status"]?.takeIf { it.isNotBlank() } ?: "Discharging"
 
-        val power = nums.getOrNull(0)
-        val current = nums.getOrNull(1)
-        val voltage = nums.getOrNull(2)
-        val temp = nums.getOrNull(3)
-        val cap = nums.getOrNull(4) ?: 0L
+        // 必须至少能读到电压或电流或电量
+        if (rawVoltage == null && rawCurrent == null && map["capacity"] == null) {
+            return null
+        }
+
+        // 智能自适应电流单位：判断是 μA 还是 mA
+        // 大于 50000 的数值必定是 μA（50000 μA = 50mA），反之是一加等设备的 mA
+        val normalizedCurrentMa: Int? = rawCurrent?.let { raw ->
+            val absRaw = abs(raw)
+            if (absRaw > 50_000) {
+                (raw / 1000).toInt()
+            } else {
+                raw.toInt()
+            }
+        }
+
+        val tempCelsius = if (rawTemp > 1000) rawTemp / 10.0 else rawTemp / 10.0
 
         return BatteryRaw(
-            powerUw = power?.takeIf { it != 0L },
-            currentMa = current?.toInt(),
-            voltageUv = voltage?.toInt(),
-            capacity = cap.toInt().coerceIn(0, 100),
-            tempC = (temp ?: 0L) / 10.0,
-            status = statusLine
+            powerUw = rawPower?.takeIf { it != 0L },
+            currentMa = normalizedCurrentMa,
+            voltageUv = rawVoltage,
+            capacity = rawCap.coerceIn(0, 100),
+            tempC = tempCelsius,
+            status = rawStatus
         )
     }
 
@@ -149,13 +190,15 @@ object RootHelper {
         return read() != null
     }
 
+    fun getDetectedPath(): String = detectedBasePath
+
     @Synchronized
     fun destroy() {
         try { suWriter?.close() } catch (_: Exception) {}
         try { suReader?.close() } catch (_: Exception) {}
         try { suProcess?.destroy() } catch (_: Exception) {}
-        suProcess = null
         suWriter = null
         suReader = null
+        suProcess = null
     }
 }

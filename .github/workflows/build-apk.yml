@@ -1,7 +1,11 @@
-name: Build APK
+name: Build & Release APK
 
 on:
   push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -10,10 +14,13 @@ permissions:
 
 jobs:
   build:
+    name: Build & Test Android APK
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Source Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -24,37 +31,62 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Build APK
-        run: chmod +x gradlew && ./gradlew assembleRelease assembleDebug --no-daemon
+      - name: Grant Execute Permissions to Gradlew
+        run: chmod +x gradlew
+
+      - name: Run Unit Tests
+        run: ./gradlew test --no-daemon
+
+      - name: Build Debug & Release APK
+        run: ./gradlew assembleDebug assembleRelease --no-daemon
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASS }}
 
-      - name: Upload APK artifacts
+      - name: Upload Debug & Release Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: battery-power-apk
+          name: BatteryPowerOverlay-APKs
           path: |
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/debug/*.apk
+          retention-days: 30
           if-no-files-found: error
 
       - name: Create / Update GitHub Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
         uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/main'
         with:
-          tag_name: v3.0.0
-          name: "v3.0.0: Material 3 现代化重构版"
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v3.0.0-latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v3.0.0 最新重构版' }}
+          draft: false
+          prerelease: false
           body: |
-            ## ✨ v3.0.0 重构更新日志
+            ## ✨ 电池功率悬浮窗 - 从零重构发布版
 
-            - **全新 Material 3 现代化 UI**：顶部实时电池看板，大号动态功率指示，电流、电压、电量、温度实时矩阵
-            - **彻底修复开机后位置丢失**：全面支持 Direct Boot，采用设备保护存储与 commit 同步落盘
-            - **状态栏 Hook 测绘就绪与双向锚点**：引入 OnGlobalLayoutListener 杜绝开机 0 尺寸错误，自适应左右时钟与四种锚点基准
-            - **毫秒级热刷新**：引入 ContentObserver 实时监听，App 调节即刻生效
-            - **桌面悬浮窗样式**：4 款胶囊背景风格（磨砂黑胶囊、半透毛玻璃、细线描边、极简全透）与防越界保护
-            - **扩展特性**：开机自启动悬浮窗、双电芯倍率兼容、充放电极性反转校准、节点底层诊断
+            ### 🎨 现代化 Material 3 全新设计
+            - **告别粗制暗黑风**：遵循 Google Material 3 现代规范，清新优雅的浅色自适应界面，排版自然疏朗，告别生硬“AI味”。
+            - **所见即所得实时视窗**：控制台顶部内嵌微缩状态栏与悬浮窗效果预览，字号、颜色、显示项即调即现。
+            - **5 大质感胶囊外观**：雾面毛玻璃、深灰雅致、纯净雪白、极简描边与全透无感。
+
+            ### 🚀 状态栏 Hook 核心重构（手机重启零漂移）
+            - **时钟原生兄弟节点（Sibling View）排版**：彻底弃用脆弱的顶层绝对边距反算算法，直接将功率视图内嵌至状态栏时钟同级容器中。
+            - **无缝适应任何场景**：无论是开机冷启动、DisplayCutout (刘海/挖孔) 避让、通知图标增减、还是横竖屏旋转，功率显示与时钟天然一体，永久杜绝漂移。
+            - **硬件加速微调**：采用 Translation X / Y 进行平滑像素微调，不干预视图测量周期，杜绝循环布局闪烁。
+            - **颜色自适应**：自动提取时钟文本色，在浅色/暗色应用与状态栏之间智能切换黑白字。
+
+            ### ⚡ 硬件与电池直读引擎
+            - **标签化结构解析**：彻底杜绝特定内核节点缺失导致的字段行错位。
+            - **智能电流单位识别**：自动判断 μA / mA，彻底兼容一加 Ace 6T 及各类高通/通用机型。
+            - **双电芯修正与极性翻转**：轻松应对各种快充协议与双电芯拓扑结构。
+            - **底层节点诊断**：内置一键诊断探测工具。
+
+            ### 📦 产物下载
+            - 推荐下载 `app-release.apk`（仅约 4.5MB，纯净精悍）。
           files: |
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/debug/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

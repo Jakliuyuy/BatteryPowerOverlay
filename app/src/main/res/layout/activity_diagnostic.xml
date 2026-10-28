@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#121316"
+    android:background="@color/app_background"
     android:orientation="vertical">
 
     <com.google.android.material.appbar.MaterialToolbar
@@ -11,9 +11,10 @@
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
         app:navigationIcon="@android:drawable/ic_menu_revert"
-        app:navigationIconTint="#F1F3F4"
-        app:title="电池节点底层诊断"
-        app:titleTextColor="#F1F3F4" />
+        app:navigationIconTint="@color/text_primary"
+        app:title="电池节点与 Root 诊断"
+        app:titleTextAppearance="@style/TextAppearance.Material3.TitleMedium"
+        app:titleTextColor="@color/text_primary" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -28,7 +29,6 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:backgroundTint="#00C853"
             android:text="开始诊断" />
 
         <com.google.android.material.button.MaterialButton
@@ -38,16 +38,17 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:text="复制结果" />
+            android:text="复制报告" />
     </LinearLayout>
 
     <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_margin="16dp"
-        app:cardBackgroundColor="#1A1C20"
+        app:cardBackgroundColor="@color/surface_card"
         app:cardCornerRadius="16dp"
-        app:strokeColor="#2C2F36"
+        app:cardElevation="1dp"
+        app:strokeColor="@color/card_stroke"
         app:strokeWidth="1dp">
 
         <ScrollView
@@ -59,9 +60,10 @@
                 android:id="@+id/tv_diag_output"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:lineSpacingExtra="4dp"
                 android:padding="16dp"
-                android:text="点击上方【开始诊断】探测本设备的电池节点与 Root 状态..."
-                android:textColor="#E0E0E0"
+                android:text="点击上方【开始诊断】探测当前设备的电池供电节点与 Root 提权状态..."
+                android:textColor="@color/text_secondary"
                 android:textSize="12sp"
                 android:typeface="monospace" />
         </ScrollView>

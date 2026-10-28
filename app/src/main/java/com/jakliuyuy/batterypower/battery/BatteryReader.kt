@@ -6,9 +6,9 @@ import com.jakliuyuy.batterypower.settings.SettingsStore
 import kotlin.math.abs
 
 /**
- * 统一电池数据采集引擎：
- * 1. root 通道：内核 power_now / current_now 直读（高精度，支持极性智能校准与双电芯计算）
- * 2. 系统降级通道：BatteryManager 接口 + ACTION_BATTERY_CHANGED 广播
+ * 统一电池动力数据采集中心：
+ * 1. Root 通道优先：内核 power_now / current_now 直读（支持双电芯与充放电极性校准）
+ * 2. 系统 API 通道：BatteryManager + ACTION_BATTERY_CHANGED 系统粘性广播
  */
 object BatteryReader {
 
@@ -36,30 +36,33 @@ object BatteryReader {
         val invert = SettingsStore.polarityInvert
         val doubleCell = SettingsStore.doubleCellFix
 
-        // 1. 尝试通过 root 读取内核节点
+        // 1. 尝试通过 Root 通道读取
         RootHelper.read()?.let { raw ->
             lastRootHealthy = true
             val voltageV = (raw.voltageUv ?: 0) / 1_000_000.0
+            val currentMaRaw = raw.currentMa ?: 0
+
             var rawW = raw.powerUw?.let { it / 1_000_000.0 }
-                ?: ((raw.currentMa ?: 0) / 1000.0 * voltageV)
+                ?: (abs(currentMaRaw) / 1000.0 * voltageV)
 
             if (doubleCell) {
                 rawW *= 2.0
             }
 
             var isCharging = raw.status.contains("Charg", ignoreCase = true) ||
-                    raw.status.contains("Full", ignoreCase = true)
+                    raw.status.contains("Full", ignoreCase = true) ||
+                    (raw.status.equals("Unknown", ignoreCase = true) && currentMaRaw > 0)
 
             if (invert) {
                 isCharging = !isCharging
             }
 
             val finalPowerW = if (isCharging) abs(rawW) else -abs(rawW)
-            val currentMa = raw.currentMa ?: 0
+            val finalCurrentMa = if (doubleCell) currentMaRaw * 2 else currentMaRaw
 
             return Sample(
                 powerW = finalPowerW,
-                currentMa = if (doubleCell) currentMa * 2 else currentMa,
+                currentMa = finalCurrentMa,
                 voltageMv = (raw.voltageUv ?: 0) / 1000,
                 level = raw.capacity,
                 tempC = raw.tempC,
@@ -71,7 +74,7 @@ object BatteryReader {
 
         lastRootHealthy = false
 
-        // 2. 降级为系统 API 读取
+        // 2. 降级为系统 BatteryManager API
         return try {
             val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
             val cur = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
@@ -91,13 +94,22 @@ object BatteryReader {
                 isCharging = !isCharging
             }
 
-            val ma = if (cur == Int.MIN_VALUE) 0 else cur
-            var calcW = abs(ma / 1000.0 * (mv / 1000.0))
+            // 系统 BatteryManager 的 CURRENT_NOW：
+            // 大多数设备返回 μA（绝对值 > 50000），少数返回 mA
+            val normalizedCurrentMa = if (cur == Int.MIN_VALUE) {
+                0
+            } else if (abs(cur) > 50_000) {
+                cur / 1000
+            } else {
+                cur
+            }
+
+            var calcW = abs(normalizedCurrentMa / 1000.0 * (mv / 1000.0))
             if (doubleCell) calcW *= 2.0
 
             Sample(
                 powerW = if (isCharging) calcW else -calcW,
-                currentMa = if (doubleCell) ma * 2 else ma,
+                currentMa = if (doubleCell) normalizedCurrentMa * 2 else normalizedCurrentMa,
                 voltageMv = mv,
                 level = cap.coerceIn(0, 100),
                 tempC = temp / 10.0,

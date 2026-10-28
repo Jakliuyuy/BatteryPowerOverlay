@@ -23,10 +23,10 @@ import kotlin.math.roundToInt
 
 /**
  * 桌面悬浮窗核心视图：
- * 1. 样式丰富：极简透明、磨砂黑胶囊、半透毛玻璃、细线描边。
- * 2. 屏幕边界安全保护（Clamping），防止拖出屏幕外失踪。
- * 3. 拖动手势结束时 commit() 同步存储 X/Y 坐标，永久记忆不丢失。
- * 4. 点击打开 App，支持长按或锁定位置。
+ * 1. 现代化微胶囊设计：全透极简、深灰雅致、毛玻璃、微光描边、纯白清爽 5 种质感外观。
+ * 2. 屏幕安全边界约束（Anti-Overscroll Clamping），绝对不会拖出屏幕外失联。
+ * 3. 拖动停止即刻 commit() 同步落盘，手机重启后坐标永久精确记忆。
+ * 4. 贴边智能吸附，轻击秒回主配置面板。
  */
 @SuppressLint("ViewConstructor")
 class BatteryOverlayView(context: Context) : TextView(context) {
@@ -37,9 +37,9 @@ class BatteryOverlayView(context: Context) : TextView(context) {
     private var lastY = 0
     private var downRawX = 0f
     private var downRawY = 0f
-    private var dragging = false
-    private var attached = false
-    private var running = false
+    private var isDragging = false
+    private var isAttached = false
+    private var isRunning = false
 
     private val screenMetrics = DisplayMetrics().also {
         @Suppress("DEPRECATION")
@@ -54,21 +54,24 @@ class BatteryOverlayView(context: Context) : TextView(context) {
         PixelFormat.TRANSLUCENT
     ).apply {
         gravity = Gravity.TOP or Gravity.START
-        if (SettingsStore.overlayX >= 0 && SettingsStore.overlayY >= 0) {
-            x = SettingsStore.overlayX
-            y = SettingsStore.overlayY
+        val savedX = SettingsStore.overlayX
+        val savedY = SettingsStore.overlayY
+        if (savedX >= 0 && savedY >= 0) {
+            x = savedX
+            y = savedY
         } else {
-            // 默认居中靠顶部
-            x = (screenMetrics.widthPixels / 2) - dp(80)
-            y = dp(60)
+            // 默认水平居中偏顶
+            x = (screenMetrics.widthPixels / 2) - dp(75)
+            y = dp(70)
         }
     }
 
     private val refreshRunnable = object : Runnable {
         override fun run() {
-            if (!running) return
+            if (!isRunning) return
             updateContent()
-            handler.postDelayed(this, SettingsStore.refreshMs.coerceAtLeast(300L))
+            val ms = SettingsStore.refreshMs.coerceAtLeast(300L)
+            handler.postDelayed(this, ms)
         }
     }
 
@@ -93,34 +96,37 @@ class BatteryOverlayView(context: Context) : TextView(context) {
             SettingsStore.STYLE_CAPSULE_OUTLINE -> {
                 background = ContextCompat.getDrawable(context, R.drawable.bg_capsule_outline)
             }
+            SettingsStore.STYLE_CAPSULE_LIGHT -> {
+                background = ContextCompat.getDrawable(context, R.drawable.bg_capsule_light)
+            }
             else -> {
                 setBackgroundColor(Color.TRANSPARENT)
-                setPadding(dp(4), dp(1), dp(4), dp(1))
+                setPadding(dp(4), dp(2), dp(4), dp(2))
             }
         }
     }
 
     fun attach() {
-        if (attached) return
-        attached = true
-        running = true
+        if (isAttached) return
+        isAttached = true
+        isRunning = true
         try {
             wm.addView(this, params)
             handler.post(refreshRunnable)
         } catch (_: Exception) {
-            attached = false
+            isAttached = false
         }
     }
 
     fun detach() {
-        running = false
+        isRunning = false
         handler.removeCallbacks(refreshRunnable)
-        if (attached) {
+        if (isAttached) {
             try {
                 wm.removeView(this)
             } catch (_: Exception) {
             }
-            attached = false
+            isAttached = false
         }
     }
 
@@ -130,41 +136,36 @@ class BatteryOverlayView(context: Context) : TextView(context) {
     }
 
     private fun updateContent() {
-        val s = BatteryReader.read(context)
+        val sample = BatteryReader.read(context)
         val unit = SettingsStore.showUnit
         val parts = mutableListOf<String>()
 
         if (SettingsStore.showPower) {
-            parts.add(if (unit) s.powerText() else s.powerText().removeSuffix("W"))
+            parts.add(if (unit) sample.powerText() else sample.powerText().removeSuffix("W"))
         }
         if (SettingsStore.showCurrent) {
-            val t = formatCurrent(s.currentMa)
-            parts.add(if (unit) t else t.filter { it.isDigit() || it == '-' || it == '.' })
+            val absMa = abs(sample.currentMa)
+            val currentStr = if (absMa >= 1000) String.format("%.2fA", sample.currentMa / 1000.0) else "${sample.currentMa}mA"
+            parts.add(if (unit) currentStr else currentStr.replace("mA", "").replace("A", ""))
         }
         if (SettingsStore.showVoltage) {
-            val t = String.format("%.2fV", s.voltageMv / 1000.0)
-            parts.add(if (unit) t else String.format("%.2f", s.voltageMv / 1000.0))
+            val vStr = String.format("%.2f", sample.voltageMv / 1000.0)
+            parts.add(if (unit) "${vStr}V" else vStr)
         }
-        if (SettingsStore.showTemp && s.tempC > 0) {
-            val t = String.format("%.1f°C", s.tempC)
-            parts.add(if (unit) t else String.format("%.1f", s.tempC))
+        if (SettingsStore.showTemp && sample.tempC > 0) {
+            val tStr = String.format("%.1f", sample.tempC)
+            parts.add(if (unit) "$tStr°C" else tStr)
         }
         if (SettingsStore.showLevel) {
-            parts.add(if (unit) "${s.level}%" else "${s.level}")
+            parts.add(if (unit) "${sample.level}%" else "${sample.level}")
         }
 
-        text = if (parts.isEmpty()) s.powerText() else parts.joinToString("  ")
+        text = if (parts.isEmpty()) sample.powerText() else parts.joinToString("  ")
         setTextColor(SettingsStore.textColor)
-    }
-
-    private fun formatCurrent(ma: Int): String {
-        val absVal = abs(ma)
-        return if (absVal >= 1000) String.format("%.2fA", ma / 1000.0) else "${ma}mA"
     }
 
     private fun onTouch(v: View, e: MotionEvent): Boolean {
         if (SettingsStore.overlayLocked) {
-            // 锁定状态下，点击依然可以打开主界面
             if (e.action == MotionEvent.ACTION_UP) {
                 openMainActivity()
             }
@@ -177,20 +178,19 @@ class BatteryOverlayView(context: Context) : TextView(context) {
                 downRawY = e.rawY
                 lastX = params.x
                 lastY = params.y
-                dragging = false
+                isDragging = false
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = e.rawX - downRawX
                 val dy = e.rawY - downRawY
                 if (abs(dx) > 10 || abs(dy) > 10) {
-                    dragging = true
+                    isDragging = true
                 }
-                if (dragging) {
+                if (isDragging) {
                     var newX = lastX + dx.roundToInt()
                     var newY = lastY + dy.roundToInt()
 
-                    // 屏幕越界安全保护
                     val maxX = screenMetrics.widthPixels - width
                     val maxY = screenMetrics.heightPixels - height
                     newX = newX.coerceIn(0, maxX.coerceAtLeast(0))
@@ -200,26 +200,23 @@ class BatteryOverlayView(context: Context) : TextView(context) {
                     params.y = newY
                     try {
                         wm.updateViewLayout(this, params)
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
                 return true
             }
             MotionEvent.ACTION_UP -> {
-                if (dragging) {
-                    // 贴边吸附处理
+                if (isDragging) {
                     if (SettingsStore.overlaySnapEdge) {
                         val midX = screenMetrics.widthPixels / 2
-                        params.x = if (params.x + width / 2 < midX) dp(4) else screenMetrics.widthPixels - width - dp(4)
+                        params.x = if (params.x + width / 2 < midX) dp(6) else screenMetrics.widthPixels - width - dp(6)
                         try {
                             wm.updateViewLayout(this, params)
                         } catch (_: Exception) {}
                     }
-                    // 同步刷盘，重启永久记忆
+                    // 坐标立即 commit 同步落盘，永久记忆
                     SettingsStore.overlayX = params.x
                     SettingsStore.overlayY = params.y
                 } else {
-                    // 轻触触发点击打开主界面
                     val clickDist = abs(e.rawX - downRawX) + abs(e.rawY - downRawY)
                     if (clickDist < 15) {
                         openMainActivity()
@@ -237,8 +234,7 @@ class BatteryOverlayView(context: Context) : TextView(context) {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
             context.startActivity(intent)
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).roundToInt()
